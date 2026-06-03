@@ -109,7 +109,7 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
                     header_task = task
                     break
 
-        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_task}"[:80], bold=True))
+        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
 
         section_errors = []
         detail_rows = []
@@ -127,11 +127,6 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
                     detail_rows.append(_make_row(content=ctx, opinion=f"{sl} {e.reason}"))
 
         if not section_errors:
-            # PRO: include OK sections instead of skipping them
-            rows.append(_make_row(
-                content=f"{len(items)} mục — Đã kiểm tra",
-                opinion="Không phát hiện lỗi."
-            ))
             continue
 
         if len(section_errors) >= LLM_SUMMARIZE_THRESHOLD:

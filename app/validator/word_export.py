@@ -209,7 +209,7 @@ def _build_wbs_sections(file_path: str, errors: List[ErrorItem]) -> List[List[di
                     break
 
         # Section header row (BOLD)
-        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_task}"[:80], bold=True))
+        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
 
         # Collect all errors in this section
         section_errors = []  # List of dicts for LLM
