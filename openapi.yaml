@@ -1,0 +1,329 @@
+openapi: "3.0.3"
+info:
+  title: MTL Validator API
+  description: |
+    Service kiểm tra file Excel MTL (Master Timeline) đúng chuẩn.
+    Tự động nhận diện cấu trúc cột, kiểm tra Cover + dữ liệu tiến độ.
+
+    ## Dùng cho Dify Agent
+
+    Dify Agent gọi `POST /api/v1/validate` gửi file Excel.
+    API trả JSON gồm `messages.user_message` — copy nguyên text này gửi cho nhân viên.
+
+    ## Các trường quan trọng cho Agent
+
+    | Field | Ý nghĩa |
+    |---|---|
+    | `status` | `pass` / `fail` / `error` |
+    | `messages.status_hint` | `PASS_CLEAN` / `PASS_WITH_NOTES` / `FAIL_NEED_FIX` / `BLOCKED` |
+    | `messages.user_message` | Text gửi cho nhân viên (đã format sẵn) |
+    | `messages.summary` | Tóm tắt bằng tiếng Việt |
+    | `messages.next_actions` | Agent nên làm gì tiếp |
+    | `summary.cover_errors` | Số lỗi Cover (CRITICAL/ERROR) |
+    | `summary.data_errors` | Số lỗi dữ liệu |
+
+  version: "1.0.0"
+  contact:
+    name: MTL Team
+    url: https://github.com/vothanhlam1793/check-mtl
+
+servers:
+  - url: "http://localhost:8000"
+    description: Local development
+  - url: "https://your-server.com"
+    description: Production (thay bằng URL thật)
+
+tags:
+  - name: validate
+    description: Upload và kiểm tra file Excel MTL
+  - name: health
+    description: Health check
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [health]
+      summary: Kiểm tra service đang chạy
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: mtl-validator
+              example:
+                status: ok
+                service: mtl-validator
+
+  /api/v1/validate:
+    post:
+      tags: [validate]
+      summary: Upload file Excel MTL và validate
+      description: |
+        Nhận file .xlsx, kiểm tra Cover + dữ liệu tiến độ, trả về kết quả chi tiết.
+
+        **Cách dùng trong Dify Agent:**
+        1. Gửi file Excel nhân viên upload
+        2. Đọc `messages.user_message` từ response
+        3. Gửi text đó cho nhân viên
+        4. Nếu `messages.status_hint == "BLOCKED"` → yêu cầu nhân viên sửa gấp
+      operationId: validateFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File Excel .xlsx cần kiểm tra
+                employee_id:
+                  type: string
+                  description: Mã nhân viên nộp file (tùy chọn)
+                  example: "NV001"
+      responses:
+        "200":
+          description: Kết quả validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+              example:
+                status: "fail"
+                file_name: "NVLG-PMD.DN2-MTL PHUOC THIEN 10A-Ver2-20260511.xlsx"
+                checked_at: "2026-06-03T10:30:00"
+                meta:
+                  data_sheet: "Phuoc Thien 10A"
+                  detected_scope_wbs: ["10A"]
+                  detected_scope_label: "Phước Thiền 10A"
+                  rows_scanned: 1033
+                  rows_skipped: 0
+                summary:
+                  total_errors: 30
+                  total_warnings: 29
+                  bold_mandatory_missing: 0
+                  data_errors: 0
+                  cover_errors: 1
+                  cover_warnings: 1
+                errors:
+                  - row: 0
+                    col: "Cover"
+                    field: "Tên công ty"
+                    received: "(trống)"
+                    reason: "Cover thiếu tên công ty"
+                    severity: "CRITICAL"
+                    fix: "Điền tên công ty vào Cover (VD: 'Công ty TNHH...')"
+                messages:
+                  summary: "File `...`. Đã quét 1033 dòng có dữ liệu. **1 lỗi NGHIÊM TRỌNG** — bắt buộc sửa ngay. 29 cảnh báo..."
+                  status_hint: "BLOCKED"
+                  next_actions:
+                    - "YEU CAU GAP: sửa 1 lỗi CRITICAL ở: Tên công ty"
+                    - "Xem xét 29 cảnh báo — có thể bỏ qua nếu là ghi chú thủ công"
+                  user_message: "LOI COVER:\n  [CRITICAL] Cover thiếu tên công ty\n  [WARNING] Cover thiếu yêu cầu chung\nFile `...` cần sửa 1 lỗi:\n\nVui long sua cac loi tren va gui lai file."
+                  error_groups:
+                    - field: "Tên công ty"
+                      count: 1
+                      rows: [0]
+                      sample_reason: "Cover thiếu tên công ty"
+                      sample_fix: "Điền tên công ty vào Cover (VD: 'Công ty TNHH...')"
+                      severity: "CRITICAL"
+        "400":
+          description: File không hợp lệ (sai định dạng)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                status: "error"
+                message: "Chỉ chấp nhận file .xlsx"
+                code: "INVALID_FILE"
+        "500":
+          description: Lỗi xử lý file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    ErrorItem:
+      type: object
+      description: Một lỗi / cảnh báo cụ thể
+      properties:
+        row:
+          type: integer
+          description: Số dòng bị lỗi (0 = lỗi Cover)
+          example: 0
+        wbs:
+          type: string
+          nullable: true
+          description: Mã WBS nếu có
+          example: "9.1.1"
+        col:
+          type: string
+          nullable: true
+          description: Cột bị lỗi ("Cover" = lỗi Cover)
+          example: "Cover"
+        field:
+          type: string
+          description: Trường bị lỗi
+          example: "Tên công ty"
+        received:
+          type: string
+          nullable: true
+          description: Giá trị nhận được
+          example: "(trống)"
+        reason:
+          type: string
+          description: Mô tả lỗi
+          example: "Cover thiếu tên công ty"
+        severity:
+          type: string
+          enum: [CRITICAL, ERROR, WARNING]
+          description: |
+            - CRITICAL: Phải sửa ngay, chặn nộp
+            - ERROR: Cần sửa trước khi duyệt
+            - WARNING: Có thể bỏ qua nếu là ghi chú
+        fix:
+          type: string
+          nullable: true
+          description: Hướng dẫn sửa
+          example: "Điền tên công ty vào Cover (VD: 'Công ty TNHH...')"
+
+    ErrorGroup:
+      type: object
+      description: Nhóm lỗi cùng loại
+      properties:
+        field:
+          type: string
+        count:
+          type: integer
+        rows:
+          type: array
+          items:
+            type: integer
+        sample_reason:
+          type: string
+        sample_fix:
+          type: string
+        severity:
+          type: string
+
+    Messages:
+      type: object
+      description: Messages cho Dify Agent xử lý
+      properties:
+        summary:
+          type: string
+          description: Tóm tắt kết quả (tiếng Việt)
+          example: "File `...`. Đã quét 1033 dòng. **1 lỗi NGHIÊM TRỌNG**."
+        status_hint:
+          type: string
+          enum: [PASS_CLEAN, PASS_WITH_NOTES, FAIL_NEED_FIX, BLOCKED]
+          description: |
+            Gợi ý cho Agent:
+            - PASS_CLEAN: Không lỗi
+            - PASS_WITH_NOTES: Đạt, có vài lưu ý
+            - FAIL_NEED_FIX: Cần sửa lỗi
+            - BLOCKED: Có lỗi CRITICAL, chặn ngay
+        template_detected:
+          type: string
+        next_actions:
+          type: array
+          items:
+            type: string
+          description: Agent nên làm gì tiếp
+        user_message:
+          type: string
+          description: |
+            **QUAN TRỌNG**: Đây là text đã format sẵn để gửi cho nhân viên.
+            Agent copy nguyên text này gửi lại cho người dùng.
+        error_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorGroup"
+
+    MetaInfo:
+      type: object
+      description: Thông tin meta về file đã kiểm tra
+      properties:
+        data_sheet:
+          type: string
+        detected_scope_wbs:
+          type: array
+          items:
+            type: string
+        detected_scope_label:
+          type: string
+        rows_scanned:
+          type: integer
+        rows_skipped:
+          type: integer
+
+    Summary:
+      type: object
+      description: Tổng kết số lượng lỗi
+      properties:
+        total_errors:
+          type: integer
+        total_warnings:
+          type: integer
+        bold_mandatory_missing:
+          type: integer
+          description: Số dòng BOLD bắt buộc nhưng trống
+        data_errors:
+          type: integer
+          description: Số lỗi dữ liệu (ERROR)
+        cover_errors:
+          type: integer
+          description: Số lỗi Cover (CRITICAL + ERROR)
+        cover_warnings:
+          type: integer
+          description: Số cảnh báo Cover (WARNING)
+
+    ValidationResult:
+      type: object
+      description: Kết quả validation đầy đủ
+      properties:
+        status:
+          type: string
+          enum: [pass, fail, error]
+          description: pass = đạt, fail = có lỗi, error = lỗi hệ thống
+        file_name:
+          type: string
+        checked_at:
+          type: string
+          format: date-time
+        meta:
+          $ref: "#/components/schemas/MetaInfo"
+        summary:
+          $ref: "#/components/schemas/Summary"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ErrorItem"
+        messages:
+          $ref: "#/components/schemas/Messages"
+
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "error"
+        message:
+          type: string
+        code:
+          type: string
