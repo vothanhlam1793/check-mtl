@@ -86,11 +86,12 @@ def validate_row(row: tuple, row_num: int, layout: InferredLayout) -> List[Error
     # ── Duration ──
     dur_str = get_str(layout.duration_col)
     dur_letter = col_letters[layout.duration_col] if layout.duration_col < len(col_letters) else "?"
+    dur_raw_number = None  # parsed numeric value for cross-check
     if dur_str and not dur_str.startswith("="):
         ok = any(pat.match(dur_str) for pat in DURATION_PATTERNS)
         if not ok:
             try:
-                float(dur_str)  # Accept any positive number as raw duration
+                dur_raw_number = float(dur_str)
                 ok = True
             except ValueError:
                 pass
@@ -98,7 +99,14 @@ def validate_row(row: tuple, row_num: int, layout: InferredLayout) -> List[Error
             errors.append(ErrorItem(
                 row=row_num, wbs=wbs_str, col=dur_letter, field="Thời lượng",
                 received=dur_str, reason="Sai định dạng thời lượng",
-                severity="ERROR", fix="Định dạng: '30 d' hoặc '30 days'"
+                severity="WARNING", fix="Định dạng: '30 d' hoặc '30 days'"
+            ))
+        elif not any(pat.match(dur_str) for pat in DURATION_PATTERNS):
+            # Raw number accepted but convention says use "N d" format
+            errors.append(ErrorItem(
+                row=row_num, wbs=wbs_str, col=dur_letter, field="Thời lượng",
+                received=dur_str, reason=f"Thời lượng ghi '{dur_str}' (số thô), nên dùng định dạng '{int(dur_raw_number)} d' cho thống nhất",
+                severity="WARNING", fix=f"Ghi '{int(dur_raw_number)} d' thay vì '{dur_str}'"
             ))
 
     # ── Start date ──
@@ -137,6 +145,27 @@ def validate_row(row: tuple, row_num: int, layout: InferredLayout) -> List[Error
             reason=f"Ngày kết thúc ({dt_finish.strftime('%d/%m/%Y')}) < Ngày bắt đầu ({dt_start.strftime('%d/%m/%Y')})",
             severity="ERROR", fix=f"Sửa ngày kết thúc >= {dt_start.strftime('%d/%m/%Y')}"
         ))
+
+    # ── Duration vs Start-Finish cross-check ──
+    if dur_raw_number is not None and dt_start and dt_finish:
+        diff_days = (dt_finish - dt_start).days
+        if dur_raw_number == 0 and diff_days > 0:
+            errors.append(ErrorItem(
+                row=row_num, wbs=wbs_str, col=dur_letter, field="Thời lượng",
+                received=str(dur_raw_number),
+                reason=f"Thời lượng = 0 nhưng từ {dt_start.strftime('%d/%m/%Y')} -> {dt_finish.strftime('%d/%m/%Y')} = {diff_days} ngày",
+                severity="WARNING", fix="Kiểm tra lại thời lượng hoặc ngày bắt đầu/kết thúc"
+            ))
+        elif dur_raw_number > 0 and diff_days >= 0:
+            delta = abs(diff_days - dur_raw_number)
+            threshold = max(5, dur_raw_number * 0.1)
+            if delta > threshold:
+                errors.append(ErrorItem(
+                    row=row_num, wbs=wbs_str, col=dur_letter, field="Thời lượng",
+                    received=str(int(dur_raw_number)),
+                    reason=f"Thời lượng {int(dur_raw_number)} ngày nhưng {dt_start.strftime('%d/%m/%Y')} -> {dt_finish.strftime('%d/%m/%Y')} = {diff_days} ngày (lệch {int(delta)})",
+                    severity="WARNING", fix="Kiểm tra lại thời lượng hoặc ngày bắt đầu/kết thúc"
+                ))
 
     # ── Status ──
     status_str = get_str(layout.status_col)
