@@ -40,11 +40,21 @@ class MetaInfo(BaseModel):
     rows_skipped: int = 0
 
 
+class CoverInfo(BaseModel):
+    company_found: bool = True
+    scale_filled: bool = True
+    yc_filled: bool = True
+    rev: int = 1
+    adjustment_filled: bool = True
+
+
 class Summary(BaseModel):
     total_errors: int = 0
     total_warnings: int = 0
     bold_mandatory_missing: int = 0
     data_errors: int = 0
+    cover_errors: int = 0
+    cover_warnings: int = 0
 
 
 class ValidationResult(BaseModel):

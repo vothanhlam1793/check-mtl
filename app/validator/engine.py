@@ -5,6 +5,7 @@ from collections import defaultdict
 from app.schemas import ValidationResult, ErrorItem, MetaInfo, Summary, Messages, ErrorGroup
 from app.validator.file_check import check_and_open_file, FileCheckError
 from app.validator.column_check import check_columns
+from app.validator.cover_check import check_cover
 from app.validator.scope_detector import detect_scope
 from app.validator.data_check import validate_row
 
@@ -71,18 +72,41 @@ def _build_messages(errors: List[ErrorItem], file_name: str, layout, total_rows:
             next_actions.append("File hoàn hảo. Chuyển sang bước đối chiếu tiến độ.")
 
     user_lines = []
+    cover_crits = [e for e in errors if e.col == "Cover" and e.severity == "CRITICAL"]
+    cover_warns = [e for e in errors if e.col == "Cover" and e.severity == "WARNING"]
+    data_crits = [e for e in errors if e.col != "Cover" and e.severity == "CRITICAL"]
+    data_errs = [e for e in errors if e.col != "Cover" and e.severity == "ERROR"]
+    data_warns = [e for e in errors if e.col != "Cover" and e.severity == "WARNING"]
+
+    if cover_crits:
+        user_lines.append("LOI COVER:")
+        for e in cover_crits:
+            user_lines.append(f"  [CRITICAL] {e.reason}")
+    if cover_warns:
+        if not cover_crits:
+            user_lines.append("LUU Y COVER:")
+        for e in cover_warns:
+            user_lines.append(f"  [WARNING] {e.reason}")
+
     if status_hint == "PASS_CLEAN":
         user_lines.append(f"File `{file_name}` đã đạt chuẩn. Không có lỗi nào.")
     elif status_hint == "PASS_WITH_NOTES":
-        user_lines.append(f"File `{file_name}` đạt chuẩn, có {len(warns)} lưu ý nhỏ:")
+        if data_warns:
+            user_lines.append(f"File `{file_name}` đạt chuẩn, có {len(data_warns)} lưu ý nhỏ:")
+        else:
+            user_lines.append(f"File `{file_name}` đạt chuẩn với {len(cover_warns)} lưu ý về Cover.")
         for g in error_groups:
-            if g.severity == "WARNING":
+            if g.severity == "WARNING" and g.field not in ("Tên công ty", "Quy mô dự án", "Yêu cầu chung", "Điều chỉnh số", "Ngày trên Cover"):
                 user_lines.append(f"  - {g.count} dòng: {g.sample_reason}. Nếu là ghi chú thì bỏ qua.")
     else:
         user_lines.append(f"File `{file_name}` cần sửa {len(crits) + len(errs)} lỗi:")
-        user_lines.append("")
+        if cover_crits or cover_warns:
+            user_lines.append("")
         for g in error_groups:
             if g.severity in ("CRITICAL", "ERROR"):
+                cover_fields = ["Tên công ty", "Quy mô dự án", "Yêu cầu chung", "Điều chỉnh số", "Ngày trên Cover"]
+                if g.field in cover_fields:
+                    continue
                 user_lines.append(f"  [{g.severity}] {g.field} ({g.count} dòng): {g.sample_reason}")
                 if g.sample_fix:
                     user_lines.append(f"      Cach sua: {g.sample_fix}")
@@ -116,6 +140,12 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
             errors=[ErrorItem(row=0, col=None, field="FILE", received="N/A", reason=str(e), severity="CRITICAL")]
         )
 
+    cover_errors: List[ErrorItem] = []
+    if cover_sheet_name and cover_sheet_name in wb.sheetnames:
+        cover_ws = wb[cover_sheet_name]
+        cover_errors = check_cover(cover_ws, original_filename or "")
+    errors.extend(cover_errors)
+
     ws = wb[data_sheet_name]
 
     col_errors = check_columns(ws, layout)
@@ -127,11 +157,16 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
         ))
     if col_errors:
         wb.close()
+        cover_errors_count = len([e for e in cover_errors if e.severity in ("CRITICAL", "ERROR")])
+        cover_warnings_count = len([e for e in cover_errors if e.severity == "WARNING"])
         meta = MetaInfo(data_sheet=data_sheet_name)
         return ValidationResult(
             status="fail", file_name=original_filename,
             checked_at=datetime.now().isoformat(),
-            meta=meta, summary=Summary(total_errors=len(errors), data_errors=len(errors)),
+            meta=meta, summary=Summary(
+                total_errors=len(errors), data_errors=len(errors),
+                cover_errors=cover_errors_count, cover_warnings=cover_warnings_count
+            ),
             errors=errors
         )
 
@@ -162,6 +197,8 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
     total_errors = len(errors)
     critical_and_errors = len([e for e in errors if e.severity in ("CRITICAL", "ERROR")])
     total_warnings = len([e for e in errors if e.severity == "WARNING"])
+    cover_errors_count = len([e for e in cover_errors if e.severity in ("CRITICAL", "ERROR")])
+    cover_warnings_count = len([e for e in cover_errors if e.severity == "WARNING"])
     status = "pass" if critical_and_errors == 0 else "fail"
 
     meta = MetaInfo(
@@ -182,7 +219,9 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
             total_errors=total_errors,
             total_warnings=total_warnings,
             bold_mandatory_missing=bold_missing_count,
-            data_errors=data_error_count
+            data_errors=data_error_count,
+            cover_errors=cover_errors_count,
+            cover_warnings=cover_warnings_count
         ),
         errors=errors,
         messages=messages

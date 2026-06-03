@@ -184,6 +184,9 @@ async function handleFile(file) {
 
 function renderResult(data) {
   document.getElementById('loading').style.display = 'none';
+  
+  document.querySelectorAll('.messages-box').forEach(el => el.remove());
+  
   const box = document.getElementById('resultBox');
   box.style.display = 'block';
 
@@ -198,30 +201,39 @@ function renderResult(data) {
   document.getElementById('resultBadge').textContent = isPass ? 'PASS' : 'FAIL';
 
   const m = data.meta;
+  const sc = data.summary;
+  const covBadge = sc.cover_errors > 0
+    ? `<span style="color:#dc2626;font-weight:700;">${sc.cover_errors} lỗi</span>`
+    : (sc.cover_warnings > 0 ? `<span style="color:#ca8a04;">${sc.cover_warnings} cảnh báo</span>` : `<span style="color:#16a34a;">OK</span>`);
   document.getElementById('resultMeta').innerHTML = `
     <div class="meta-item"><div class="meta-label">File</div><div class="meta-value">${data.file_name}</div></div>
     <div class="meta-item"><div class="meta-label">Sheet dữ liệu</div><div class="meta-value">${m.data_sheet}</div></div>
+    <div class="meta-item"><div class="meta-label">Cover</div><div class="meta-value">${covBadge}</div></div>
     <div class="meta-item"><div class="meta-label">Phạm vi phát hiện</div><div class="meta-value" title="${m.detected_scope_label}">${m.detected_scope_label || '(không có dữ liệu)'}</div></div>
     <div class="meta-item"><div class="meta-label">Dòng đã quét</div><div class="meta-value">${m.rows_scanned} / ${m.rows_scanned + m.rows_skipped}</div></div>
-    <div class="meta-item"><div class="meta-label">BOLD bắt buộc thiếu</div><div class="meta-value" style="color:${data.summary.bold_mandatory_missing > 0 ? '#dc2626' : '#16a34a'}">${data.summary.bold_mandatory_missing}</div></div>
-    <div class="meta-item"><div class="meta-label">Lỗi dữ liệu</div><div class="meta-value" style="color:${data.summary.data_errors > 0 ? '#ea580c' : '#16a34a'}">${data.summary.data_errors}</div></div>
+    <div class="meta-item"><div class="meta-label">BOLD bắt buộc thiếu</div><div class="meta-value" style="color:${sc.bold_mandatory_missing > 0 ? '#dc2626' : '#16a34a'}">${sc.bold_mandatory_missing}</div></div>
+    <div class="meta-item"><div class="meta-label">Lỗi dữ liệu</div><div class="meta-value" style="color:${sc.data_errors > 0 ? '#ea580c' : '#16a34a'}">${sc.data_errors}</div></div>
   `;
 
   // Messages for Agent
   if (data.messages && data.messages.summary) {
     const msgs = data.messages;
     const cls = msgs.status_hint && msgs.status_hint.startsWith('PASS') ? 'pass' : 'fail';
-    document.getElementById('errorsTable').insertAdjacentHTML('beforebegin', `
+    const ts = data.checked_at ? new Date(data.checked_at).toLocaleTimeString('vi-VN') : '-';
+    document.getElementById('errorsTable').insertAdjacentHTML('beforebegin', \`
       <div class="messages-box">
-        <h3>Messages for Agent</h3>
-        <span class="msg-status ${cls}">${msgs.status_hint || cls.toUpperCase()}</span>
-        <div class="msg-summary ${cls}">${msgs.summary}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>API Response</h3>
+          <span style="font-size:11px;color:#94a3b8;">\${ts}</span>
+        </div>
+        <span class="msg-status \${cls}">\${msgs.status_hint || cls.toUpperCase()}</span>
+        <div class="msg-summary \${cls}">\${msgs.summary}</div>
         <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Agent nên làm gì tiếp:</h4>
-        <ul class="msg-actions">${(msgs.next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul>
+        <ul class="msg-actions">\${(msgs.next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul>
         <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Gửi cho nhân viên:</h4>
-        <div class="msg-user">${msgs.user_message || '(không có)'}</div>
+        <div class="msg-user">\${msgs.user_message || '(không có)'}</div>
       </div>
-    `);
+    \`);
   }
 
   if (data.errors.length === 0) {
