@@ -92,6 +92,14 @@ if os.path.exists(REPORT_PATH):
         return FileResponse(REPORT_PATH, media_type="text/html")
 
 
+# ── Serve GMS Tools (upload + export Word) ──
+GMS_TOOLS_PATH = os.path.join(BASE_DIR, "gms-tools.html")
+if os.path.exists(GMS_TOOLS_PATH):
+    @app.get("/gms-tools", include_in_schema=False)
+    async def gms_tools():
+        return FileResponse(GMS_TOOLS_PATH, media_type="text/html")
+
+
 # ── Serve static UI if exists ──
 ui_path = os.path.join(BASE_DIR, "test-ui.html")
 if os.path.exists(ui_path):

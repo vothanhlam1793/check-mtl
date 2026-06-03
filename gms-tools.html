@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GMS — Kiểm tra MTL & Xuất BC Thẩm Định</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #f5f7fa; color: #1e293b; min-height: 100vh; }
+
+  .header {
+    background: linear-gradient(135deg, #0b3d6b 0%, #1565c0 100%);
+    color: #fff; padding: 12px 24px;
+    border-bottom: 3px solid #ff6f00;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .header h1 { font-size: 18px; white-space: nowrap; }
+  .header .nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  .nav-btn {
+    padding: 5px 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+    color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none;
+  }
+  .nav-btn:hover, .nav-btn.active { background: #ff6f00; border-color: #ff6f00; }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+  .status-dot.on { background: #4caf50; box-shadow: 0 0 5px #4caf50; }
+  .status-dot.off { background: #e53935; }
+
+  .container { max-width: 1050px; margin: 0 auto; padding: 20px; }
+
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .toolbar label { font-size: 13px; font-weight: 600; color: #475569; white-space: nowrap; }
+  .toolbar input[type="text"] {
+    padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; min-width: 180px;
+  }
+
+  .upload-zone {
+    background: #fff; border: 2px dashed #cbd5e1; border-radius: 12px;
+    padding: 36px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; margin-bottom: 20px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: #1565c0; background: #f0f4ff; }
+  .upload-zone.done { border-color: #43a047; background: #f0fdf4; }
+  .upload-icon { font-size: 44px; margin-bottom: 10px; }
+  .upload-text { font-size: 15px; color: #475569; }
+  .upload-hint { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+  .file-name { font-weight: 700; color: #1565c0; margin-top: 8px; }
+  input[type="file"] { display: none; }
+
+  .result-box {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06); overflow: hidden; display: none;
+  }
+  .result-header {
+    padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #e2e8f0; gap: 12px; flex-wrap: wrap;
+  }
+  .result-header.pass { background: #f0fdf4; border-bottom-color: #bbf7d0; }
+  .result-header.fail { background: #fef2f2; border-bottom-color: #fecaca; }
+  .result-header h2 { font-size: 17px; }
+  .badge {
+    display: inline-block; padding: 4px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700; letter-spacing: .3px;
+  }
+  .badge-pass { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .badge-fail { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+  .result-actions {
+    display: flex; gap: 8px; padding: 10px 20px; background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0; flex-wrap: wrap;
+  }
+  .btn {
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s;
+  }
+  .btn-download {
+    background: linear-gradient(135deg, #1565c0, #1976d2);
+    color: #fff; box-shadow: 0 2px 8px rgba(21,101,192,.3);
+  }
+  .btn-download:hover { box-shadow: 0 4px 14px rgba(21,101,192,.45); transform: translateY(-1px); }
+  .btn-download:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn-secondary { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
+  .btn-secondary:hover { background: #f1f5f9; }
+
+  .result-meta {
+    padding: 12px 20px; background: #f8fafc;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+    border-bottom: 1px solid #e2e8f0; font-size: 13px;
+  }
+  .meta-item { }
+  .meta-label { color: #64748b; font-size: 11px; text-transform: uppercase; }
+  .meta-value { font-weight: 600; }
+
+  .errors-table { padding: 0; overflow: auto; max-height: 450px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: #f1f5f9; color: #475569; font-size: 12px;
+    padding: 9px 10px; text-align: left; border-bottom: 2px solid #e2e8f0;
+    position: sticky; top: 0; z-index: 1;
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+  tbody tr:hover { background: #f8fafc; }
+  .sev-CRITICAL { background: #fef2f2; color: #dc2626; font-weight: 700; }
+  .sev-ERROR { color: #ea580c; font-weight: 600; }
+  .sev-WARNING { color: #ca8a04; }
+  .td-wbs { font-family: 'Consolas', monospace; color: #1565c0; font-weight: 600; }
+
+  .messages-box {
+    padding: 14px 20px; border-bottom: 1px solid #e2e8f0; background: #fafbff;
+  }
+  .messages-box h3 { font-size: 13px; color: #1e40af; margin-bottom: 6px; }
+  .msg-summary {
+    font-size: 13px; line-height: 1.6; margin-bottom: 8px; padding: 8px 14px;
+    background: #f0f4ff; border-radius: 8px; border-left: 3px solid #1e40af;
+  }
+  .msg-summary.pass { background: #f0fdf4; border-left-color: #16a34a; }
+  .msg-summary.fail { background: #fef2f2; border-left-color: #dc2626; }
+  .msg-actions { list-style: none; }
+  .msg-actions li { padding: 3px 0; font-size: 13px; }
+  .msg-actions li::before { content: '→ '; color: #1565c0; font-weight: 700; }
+  .msg-user {
+    padding: 8px 14px; background: #f8fafc; border-radius: 8px; font-size: 13px;
+    line-height: 1.6; white-space: pre-wrap; border: 1px solid #e2e8f0; margin-top: 6px;
+  }
+  .msg-status {
+    font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
+    display: inline-block; margin-bottom: 6px;
+  }
+  .msg-status.pass { background: #dcfce7; color: #166534; }
+  .msg-status.fail { background: #fee2e2; color: #991b1b; }
+
+  .loading { display: none; text-align: center; padding: 40px; }
+  .spinner {
+    width: 38px; height: 38px; border: 4px solid #e2e8f0;
+    border-top-color: #1565c0; border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media print {
+    .header, .upload-zone, .loading, .toolbar, .result-actions { display: none; }
+    .result-box { box-shadow: none; border: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <h1>GMS — Kiểm tra MTL & Báo cáo Thẩm định</h1>
+  </div>
+  <div class="nav">
+    <a href="/" class="nav-btn">Upload</a>
+    <a href="/gms-tools" class="nav-btn active">GMS Tools</a>
+    <a href="/report" class="nav-btn">Báo cáo</a>
+    <a href="/api-docs" class="nav-btn">API Docs</a>
+    <span style="font-size:12px;color:rgba(255,255,255,.7);margin-left:8px;">
+      <span class="status-dot on" id="apiDot"></span>
+      <span id="apiStatus" style="font-size:11px;">connected</span>
+    </span>
+  </div>
+</div>
+
+<div class="container">
+  <div class="toolbar">
+    <label>Người thẩm định:</label>
+    <input type="text" id="reviewerName" placeholder="Nhập tên người thẩm định" value="">
+  </div>
+
+  <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">&#128194;</div>
+    <div class="upload-text">Kéo thả file Excel MTL (.xlsx) vào đây hoặc <strong>click để chọn</strong></div>
+    <div class="upload-hint">Hệ thống tự động kiểm tra Cover + dữ liệu tiến độ và xuất BC Thẩm định (.docx)</div>
+    <div class="file-name" id="fileName"></div>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx" onchange="handleFile(this.files[0])">
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Đang kiểm tra file...</div>
+  </div>
+
+  <div class="loading" id="loadingWord" style="color:#1565c0;">
+    <div class="spinner" style="border-top-color:#43a047;"></div>
+    <div>Đang tạo file Word BC Thẩm Định...</div>
+  </div>
+
+  <div class="result-box" id="resultBox">
+    <div class="result-header" id="resultHeader">
+      <h2 id="resultTitle"></h2>
+      <span class="badge" id="resultBadge"></span>
+    </div>
+
+    <div class="result-actions" id="resultActions" style="display:none;">
+      <button class="btn btn-download" id="btnDownload" onclick="downloadWord()">
+        📥 Tải BC Thẩm Định (.docx)
+      </button>
+      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+        🔄 Kiểm tra file khác
+      </button>
+    </div>
+
+    <div class="result-meta" id="resultMeta"></div>
+    <div class="errors-table" id="errorsTable"></div>
+  </div>
+</div>
+
+<script>
+const API_VALIDATE = 'http://localhost:8000/api/v1/validate';
+const API_EXPORT   = 'http://localhost:8000/api/v1/export-word';
+let lastFileName = '';
+let lastFile = null;
+let lastResult = null;
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    alert('Vui lòng chọn file .xlsx');
+    return;
+  }
+
+  lastFile = file;
+  lastFileName = file.name;
+  document.getElementById('fileName').textContent = '📄 ' + file.name;
+  dropZone.classList.add('done');
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch(API_VALIDATE, { method: 'POST', body: form });
+    const data = await res.json();
+    lastResult = data;
+    renderResult(data);
+  } catch (err) {
+    document.getElementById('loading').style.display = 'none';
+    alert('Lỗi kết nối API: ' + err.message);
+  }
+}
+
+function renderResult(data) {
+  document.getElementById('loading').style.display = 'none';
+  document.querySelectorAll('.messages-box').forEach(el => el.remove());
+
+  const box = document.getElementById('resultBox');
+  box.style.display = 'block';
+
+  const isPass = data.status === 'pass';
+  const header = document.getElementById('resultHeader');
+  header.className = 'result-header ' + (isPass ? 'pass' : 'fail');
+  document.getElementById('resultTitle').textContent = isPass
+    ? '✅ File đạt chuẩn!'
+    : `❌ File có ${data.summary.total_errors} lỗi`;
+
+  document.getElementById('resultBadge').className = 'badge ' + (isPass ? 'badge-pass' : 'badge-fail');
+  document.getElementById('resultBadge').textContent = isPass ? 'PASS' : 'FAIL';
+
+  const m = data.meta;
+  const sc = data.summary;
+  const covBadge = sc.cover_errors > 0
+    ? `<span style="color:#dc2626;font-weight:700;">${sc.cover_errors} lỗi</span>`
+    : (sc.cover_warnings > 0 ? `<span style="color:#ca8a04;">${sc.cover_warnings} cảnh báo</span>` : `<span style="color:#16a34a;">OK</span>`);
+  document.getElementById('resultMeta').innerHTML = `
+    <div class="meta-item"><div class="meta-label">File</div><div class="meta-value">${data.file_name}</div></div>
+    <div class="meta-item"><div class="meta-label">Sheet dữ liệu</div><div class="meta-value">${m.data_sheet}</div></div>
+    <div class="meta-item"><div class="meta-label">Cover</div><div class="meta-value">${covBadge}</div></div>
+    <div class="meta-item"><div class="meta-label">Phạm vi</div><div class="meta-value" title="${m.detected_scope_label}">${m.detected_scope_label || '(không có dữ liệu)'}</div></div>
+    <div class="meta-item"><div class="meta-label">Dòng đã quét</div><div class="meta-value">${m.rows_scanned} / ${m.rows_scanned + m.rows_skipped}</div></div>
+    <div class="meta-item"><div class="meta-label">BOLD bắt buộc thiếu</div><div class="meta-value" style="color:${sc.bold_mandatory_missing > 0 ? '#dc2626' : '#16a34a'}">${sc.bold_mandatory_missing}</div></div>
+    <div class="meta-item"><div class="meta-label">Lỗi dữ liệu</div><div class="meta-value" style="color:${sc.data_errors > 0 ? '#ea580c' : '#16a34a'}">${sc.data_errors}</div></div>
+  `;
+
+  // Show download button
+  document.getElementById('resultActions').style.display = 'flex';
+  document.getElementById('btnDownload').disabled = false;
+
+  // Messages
+  if (data.messages && data.messages.summary) {
+    const msgs = data.messages;
+    const cls = msgs.status_hint && msgs.status_hint.startsWith('PASS') ? 'pass' : 'fail';
+    const ts = data.checked_at ? new Date(data.checked_at).toLocaleTimeString('vi-VN') : '-';
+    document.getElementById('errorsTable').insertAdjacentHTML('beforebegin', `
+      <div class="messages-box">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>API Response</h3>
+          <span style="font-size:11px;color:#94a3b8;">${ts}</span>
+        </div>
+        <span class="msg-status ${cls}">${msgs.status_hint || cls.toUpperCase()}</span>
+        <div class="msg-summary ${cls}">${msgs.summary}</div>
+        <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Agent nên làm gì tiếp:</h4>
+        <ul class="msg-actions">${(msgs.next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul>
+        <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Gửi cho nhân viên:</h4>
+        <div class="msg-user">${msgs.user_message || '(không có)'}</div>
+      </div>
+    `);
+  }
+
+  // Error table
+  if (data.errors.length === 0) {
+    document.getElementById('errorsTable').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#16a34a;font-size:16px;">✅ Không có lỗi nào. File đúng chuẩn!</div>';
+  } else {
+    const rows = data.errors.map((e, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${e.row}</td>
+        <td class="td-wbs">${e.wbs || '-'}</td>
+        <td>${e.col || '-'}</td>
+        <td>${e.field}</td>
+        <td style="color:#e53935;max-width:160px;word-break:break-all;">${e.received || '-'}</td>
+        <td>${e.reason}</td>
+        <td class="sev-${e.severity}">${e.severity}</td>
+        <td style="color:#16a34a;max-width:180px;">${e.fix || '-'}</td>
+      </tr>
+    `).join('');
+    document.getElementById('errorsTable').innerHTML = `
+      <table>
+        <thead>
+          <tr><th>#</th><th>Dòng</th><th>WBS</th><th>Cột</th><th>Trường</th><th>Giá trị</th><th>Lỗi</th><th>Mức</th><th>Cần sửa</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function downloadWord() {
+  if (!lastFile) {
+    alert('Chưa có file để xuất. Vui lòng upload file trước.');
+    return;
+  }
+
+  const reviewer = document.getElementById('reviewerName').value.trim();
+  if (!reviewer) {
+    document.getElementById('reviewerName').focus();
+    document.getElementById('reviewerName').style.borderColor = '#e53935';
+    setTimeout(() => { document.getElementById('reviewerName').style.borderColor = ''; }, 2000);
+    return;
+  }
+
+  document.getElementById('btnDownload').disabled = true;
+  document.getElementById('loadingWord').style.display = 'block';
+  document.getElementById('resultBox').scrollIntoView({ behavior: 'smooth' });
+
+  const form = new FormData();
+  form.append('file', lastFile);
+  form.append('reviewer_name', reviewer);
+
+  try {
+    const res = await fetch(API_EXPORT, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Lỗi server');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = lastFileName.replace(/\.xlsx$/i, '_BC_THAM_DINH.docx');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Lỗi tạo file Word: ' + err.message);
+  } finally {
+    document.getElementById('loadingWord').style.display = 'none';
+    document.getElementById('btnDownload').disabled = false;
+  }
+}
+
+async function checkHealth() {
+  try {
+    const res = await fetch('http://localhost:8000/api/v1/health');
+    if (res.ok) {
+      document.getElementById('apiDot').className = 'status-dot on';
+      document.getElementById('apiStatus').textContent = 'connected';
+    }
+  } catch {
+    document.getElementById('apiDot').className = 'status-dot off';
+    document.getElementById('apiStatus').textContent = 'offline';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 5000);
+</script>
+</body>
+</html>
