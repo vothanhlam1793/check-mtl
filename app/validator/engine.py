@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List
 from collections import defaultdict
 
-from app.schemas import ValidationResult, ErrorItem, MetaInfo, Summary, Messages, ErrorGroup
+from app.schemas import ValidationResult, ErrorItem, MetaInfo, Summary, Messages, ErrorGroup, WbsSection
 from app.validator.file_check import check_and_open_file, FileCheckError
 from app.validator.column_check import check_columns
 from app.validator.cover_check import check_cover
@@ -192,6 +192,52 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
             errors.extend(row_errors)
             data_error_count += len([e for e in row_errors if e.severity == "ERROR"])
 
+    # Build WBS sections summary (for word_export_pro & section view)
+    section_items = {}  # sec -> {"items": [(row_num, wbs, task)], "task_name": ""}
+    for r in range(layout.header_row + 1, ws.max_row + 1):
+        wbs_v = ws.cell(row=r, column=layout.wbs_col + 1).value
+        task_v = ws.cell(row=r, column=layout.task_col + 1).value
+        if wbs_v is not None and str(wbs_v).strip():
+            wbs_str = str(wbs_v).strip()
+            task_str = str(task_v).strip() if task_v else ""
+            parts = wbs_str.split(".")
+            if len(parts) >= 2:
+                sec = f"{parts[0]}.{parts[1]}"
+            else:
+                sec = parts[0]
+            if sec not in section_items:
+                section_items[sec] = {"items": [], "task_name": ""}
+            section_items[sec]["items"].append((r, wbs_str, task_str))
+            if wbs_str == sec and task_str and not section_items[sec]["task_name"]:
+                section_items[sec]["task_name"] = task_str
+
+    for sec, sis in section_items.items():
+        if not sis["task_name"]:
+            for _, _, task in sis["items"]:
+                if task:
+                    sis["task_name"] = task
+                    break
+
+    error_by_row = defaultdict(int)
+    for e in errors:
+        if e.row > 0:
+            error_by_row[e.row] += 1
+
+    wbs_sections = []
+    for sec in sorted(section_items.keys(),
+                       key=lambda x: (int(x.split(".")[0]) if x.split(".")[0].isdigit() else 999,
+                                      int(x.split(".")[1]) if "." in x and x.split(".")[1].isdigit() else 0)):
+        sis = section_items[sec]
+        total = len(sis["items"])
+        err_cnt = sum(error_by_row.get(r, 0) for r, _, _ in sis["items"])
+        wbs_sections.append(WbsSection(
+            wbs=sec,
+            task_name=sis["task_name"],
+            total_items=total,
+            error_count=err_cnt,
+            status="HAS_ERRORS" if err_cnt > 0 else "OK"
+        ))
+
     wb.close()
 
     total_errors = len(errors)
@@ -206,7 +252,8 @@ def run_validation(file_path: str, original_filename: str = "") -> ValidationRes
         detected_scope_wbs=sorted(scope_info.scope_wbs)[:20],
         detected_scope_label=scope_info.scope_label,
         rows_scanned=len(scope_info.rows_to_validate),
-        rows_skipped=scope_info.rows_skipped
+        rows_skipped=scope_info.rows_skipped,
+        wbs_sections=wbs_sections
     )
 
     messages = _build_messages(errors, original_filename, layout, scope_info.total_data_rows)

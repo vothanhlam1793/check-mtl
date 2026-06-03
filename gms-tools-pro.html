@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GMS PRO — Thẩm định đầy đủ WBS + BC Thẩm Định</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; background: #f5f7fa; color: #1e293b; min-height: 100vh; }
+
+  .header {
+    background: linear-gradient(135deg, #0b3d6b 0%, #1565c0 100%);
+    color: #fff; padding: 12px 24px;
+    border-bottom: 3px solid #ff6f00;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .header h1 { font-size: 18px; white-space: nowrap; }
+  .header .nav { display: flex; gap: 6px; flex-wrap: wrap; }
+  .nav-btn {
+    padding: 5px 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+    color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none;
+  }
+  .nav-btn:hover, .nav-btn.active { background: #ff6f00; border-color: #ff6f00; }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  .toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .toolbar label { font-size: 13px; font-weight: 600; color: #475569; white-space: nowrap; }
+  .toolbar input[type="text"] {
+    padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; min-width: 180px;
+  }
+
+  .upload-zone {
+    background: #fff; border: 2px dashed #cbd5e1; border-radius: 12px;
+    padding: 36px 20px; text-align: center; cursor: pointer;
+    transition: all .2s; margin-bottom: 20px;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: #1565c0; background: #f0f4ff; }
+  .upload-zone.done { border-color: #43a047; background: #f0fdf4; }
+  .upload-icon { font-size: 44px; margin-bottom: 10px; }
+  .upload-text { font-size: 15px; color: #475569; }
+  input[type="file"] { display: none; }
+
+  .loading { display: none; text-align: center; padding: 40px; }
+  .spinner {
+    width: 38px; height: 38px; border: 4px solid #e2e8f0;
+    border-top-color: #1565c0; border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-box {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,.06); overflow: hidden; display: none;
+  }
+  .result-box.show { display: block; }
+
+  .result-header {
+    padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid #e2e8f0; gap: 12px; flex-wrap: wrap;
+  }
+  .result-header.pass { background: #f0fdf4; border-bottom-color: #bbf7d0; }
+  .result-header.fail { background: #fef2f2; border-bottom-color: #fecaca; }
+  .result-header h2 { font-size: 17px; }
+  .badge {
+    display: inline-block; padding: 4px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 700;
+  }
+  .badge-pass { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .badge-fail { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+  .result-actions {
+    display: flex; gap: 8px; padding: 10px 20px; background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0; flex-wrap: wrap;
+  }
+  .btn {
+    padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: none; display: inline-flex; align-items: center; gap: 6px;
+    transition: all .15s;
+  }
+  .btn-download-pro {
+    background: linear-gradient(135deg, #e65100, #f57c00);
+    color: #fff; box-shadow: 0 2px 8px rgba(230,81,0,.3);
+  }
+  .btn-download-pro:hover { box-shadow: 0 4px 14px rgba(230,81,0,.45); transform: translateY(-1px); }
+  .btn-download-pro:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn-download {
+    background: linear-gradient(135deg, #1565c0, #1976d2);
+    color: #fff; box-shadow: 0 2px 8px rgba(21,101,192,.3);
+  }
+  .btn-download:hover { box-shadow: 0 4px 14px rgba(21,101,192,.45); transform: translateY(-1px); }
+  .btn-download:disabled { background: #94a3b8; cursor: not-allowed; box-shadow: none; transform: none; }
+  .btn-secondary { background: #fff; color: #475569; border: 1px solid #cbd5e1; }
+  .btn-secondary:hover { background: #f1f5f9; }
+
+  .section-summary {
+    padding: 14px 20px; border-bottom: 1px solid #e2e8f0;
+  }
+  .section-summary h3 { font-size: 14px; margin-bottom: 10px; color: #1e40af; }
+  .section-cards {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px;
+  }
+  .section-card {
+    border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    transition: all .15s;
+  }
+  .section-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .section-card.ok { border-left: 3px solid #16a34a; background: #f0fdf4; }
+  .section-card.err { border-left: 3px solid #dc2626; background: #fef2f2; }
+  .section-card .sec-info { flex: 1; }
+  .section-card .sec-wbs { font-weight: 700; font-size: 13px; color: #1e293b; }
+  .section-card .sec-task { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .section-card .sec-meta { font-size: 11px; color: #94a3b8; }
+  .section-card .sec-badge {
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px; white-space: nowrap;
+  }
+  .sec-badge-ok { background: #dcfce7; color: #166534; }
+  .sec-badge-err { background: #fee2e2; color: #dc2626; }
+
+  .result-meta {
+    padding: 12px 20px; background: #f8fafc;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px;
+    border-bottom: 1px solid #e2e8f0; font-size: 13px;
+  }
+  .meta-label { color: #64748b; font-size: 11px; text-transform: uppercase; }
+  .meta-value { font-weight: 600; }
+
+  .errors-table { padding: 0; overflow: auto; max-height: 400px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: #f1f5f9; color: #475569; font-size: 12px;
+    padding: 9px 10px; text-align: left; border-bottom: 2px solid #e2e8f0;
+    position: sticky; top: 0; z-index: 1;
+  }
+  tbody td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; }
+  tbody tr:hover { background: #f8fafc; }
+  .sev-CRITICAL { background: #fef2f2; color: #dc2626; font-weight: 700; }
+  .sev-ERROR { color: #ea580c; font-weight: 600; }
+  .sev-WARNING { color: #ca8a04; }
+  .td-wbs { font-family: 'Consolas', monospace; color: #1565c0; font-weight: 600; }
+
+  .toggle-errs {
+    display: block; width: 100%; text-align: center; padding: 10px;
+    background: #f8fafc; border: none; border-top: 1px solid #e2e8f0;
+    color: #475569; font-size: 13px; cursor: pointer; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <h1>GMS PRO — Thẩm định đầy đủ WBS</h1>
+    <span style="font-size:11px;background:#ff6f00;color:#fff;padding:2px 8px;border-radius:10px;">PRO</span>
+  </div>
+  <div class="nav">
+    <a href="/" class="nav-btn">Upload</a>
+    <a href="/gms-tools" class="nav-btn">GMS Tools</a>
+    <a href="/gms-tools-pro" class="nav-btn active">GMS PRO</a>
+    <a href="/report" class="nav-btn">Báo cáo</a>
+    <a href="/api-docs" class="nav-btn">API Docs</a>
+  </div>
+</div>
+
+<div class="container">
+  <div class="toolbar">
+    <label>Người thẩm định:</label>
+    <input type="text" id="reviewerName" placeholder="Nhập tên người thẩm định" value="">
+  </div>
+
+  <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">&#128194;</div>
+    <div class="upload-text">Kéo thả file Excel MTL (.xlsx) hoặc <strong>click để chọn</strong></div>
+    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Kiểm tra Cover + dữ liệu tiến độ — hiển thị ĐẦY ĐỦ tất cả WBS section</div>
+    <div class="file-name" id="fileName" style="font-weight:700;color:#1565c0;margin-top:8px;"></div>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx" onchange="handleFile(this.files[0])">
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div>Đang kiểm tra file...</div>
+  </div>
+  <div class="loading" id="loadingWord">
+    <div class="spinner" style="border-top-color:#f57c00;"></div>
+    <div id="loadingWordText">Đang tạo file Word...</div>
+  </div>
+
+  <div class="result-box" id="resultBox">
+    <div class="result-header" id="resultHeader">
+      <h2 id="resultTitle"></h2>
+      <span class="badge" id="resultBadge"></span>
+    </div>
+
+    <div class="result-meta" id="resultMeta"></div>
+
+    <!-- WBS Section Summary -->
+    <div class="section-summary" id="sectionSummary" style="display:none;">
+      <h3>📊 Tổng quan WBS Sections</h3>
+      <div class="section-cards" id="sectionCards"></div>
+    </div>
+
+    <div class="result-actions" id="resultActions" style="display:none;">
+      <button class="btn btn-download-pro" id="btnDownloadPro" onclick="downloadWordPro()">
+        📥 Tải BC Thẩm Định (ĐẦY ĐỦ)
+      </button>
+      <button class="btn btn-download" id="btnDownload" onclick="downloadWord()">
+        📥 BC Thẩm Định (Cổ điển)
+      </button>
+      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">
+        🔄 Kiểm tra file khác
+      </button>
+    </div>
+
+    <div id="errorsCollapse" style="display:none;">
+      <div class="errors-table" id="errorsTable"></div>
+    </div>
+    <button class="toggle-errs" id="toggleErrs" style="display:none;" onclick="toggleErrors()">
+      ▼ Xem chi tiết từng lỗi
+    </button>
+  </div>
+</div>
+
+<script>
+const API_VALIDATE = '/api/v1/validate';
+const API_EXPORT = '/api/v1/export-word';
+const API_EXPORT_PRO = '/api/v1/export-word-pro';
+let lastFileName = '';
+let lastFile = null;
+let lastResult = null;
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+async function checkHealth() {
+  try {
+    await fetch(API_VALIDATE.replace('/validate', '/health'));
+  } catch {}
+}
+checkHealth();
+setInterval(checkHealth, 5000);
+
+async function handleFile(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    alert('Vui lòng chọn file .xlsx');
+    return;
+  }
+
+  lastFile = file;
+  lastFileName = file.name;
+  document.getElementById('fileName').textContent = '📄 ' + file.name;
+  dropZone.classList.add('done');
+  document.getElementById('resultBox').style.display = 'none';
+  document.getElementById('loading').style.display = 'block';
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch(API_VALIDATE, { method: 'POST', body: form });
+    const data = await res.json();
+    lastResult = data;
+    renderResult(data);
+  } catch (err) {
+    document.getElementById('loading').style.display = 'none';
+    alert('Lỗi kết nối API: ' + err.message);
+  }
+}
+
+function renderResult(data) {
+  document.getElementById('loading').style.display = 'none';
+  const box = document.getElementById('resultBox');
+  box.classList.add('show');
+
+  const isPass = data.status === 'pass';
+  const header = document.getElementById('resultHeader');
+  header.className = 'result-header ' + (isPass ? 'pass' : 'fail');
+  document.getElementById('resultTitle').textContent = isPass
+    ? '✅ File đạt chuẩn!'
+    : `❌ File có ${data.summary.total_errors} lỗi`;
+
+  document.getElementById('resultBadge').className = 'badge ' + (isPass ? 'badge-pass' : 'badge-fail');
+  document.getElementById('resultBadge').textContent = isPass ? 'PASS' : 'FAIL';
+
+  const m = data.meta;
+  const sc = data.summary;
+  const wss = m.wbs_sections || [];
+  const okCount = wss.filter(s => s.status === 'OK').length;
+  const errCount = wss.filter(s => s.status === 'HAS_ERRORS').length;
+
+  const covBadge = sc.cover_errors > 0
+    ? `<span style="color:#dc2626;font-weight:700;">${sc.cover_errors} lỗi</span>`
+    : (sc.cover_warnings > 0 ? `<span style="color:#ca8a04;">${sc.cover_warnings} cảnh báo</span>` : `<span style="color:#16a34a;">OK</span>`);
+
+  document.getElementById('resultMeta').innerHTML = `
+    <div class="meta-item"><div class="meta-label">File</div><div class="meta-value">${data.file_name}</div></div>
+    <div class="meta-item"><div class="meta-label">Sheet</div><div class="meta-value">${m.data_sheet}</div></div>
+    <div class="meta-item"><div class="meta-label">Cover</div><div class="meta-value">${covBadge}</div></div>
+    <div class="meta-item"><div class="meta-label">WBS Sections</div><div class="meta-value">
+      ${errCount > 0 ? `<span style="color:#dc2626;">${errCount} lỗi</span>` : ''}
+      ${errCount > 0 && okCount > 0 ? ' + ' : ''}
+      ${okCount > 0 ? `<span style="color:#16a34a;">${okCount} OK</span>` : ''}
+      ${wss.length === 0 ? '<span style="color:#94a3b8;">-</span>' : ''}
+    </div></div>
+    <div class="meta-item"><div class="meta-label">Dòng quét</div><div class="meta-value">${m.rows_scanned}</div></div>
+    <div class="meta-item"><div class="meta-label">BOLD thiếu</div><div class="meta-value" style="color:${sc.bold_mandatory_missing > 0 ? '#dc2626' : '#16a34a'}">${sc.bold_mandatory_missing}</div></div>
+  `;
+
+  // WBS Section cards
+  const summaryDiv = document.getElementById('sectionSummary');
+  if (wss.length > 0) {
+    summaryDiv.style.display = 'block';
+    document.getElementById('sectionCards').innerHTML = wss.map(s => `
+      <div class="section-card ${s.status === 'OK' ? 'ok' : 'err'}">
+        <div class="sec-info">
+          <div class="sec-wbs">${s.wbs} ${s.task_name ? '- ' + s.task_name : ''}</div>
+          <div class="sec-meta">${s.total_items} mục</div>
+        </div>
+        <span class="sec-badge ${s.status === 'OK' ? 'sec-badge-ok' : 'sec-badge-err'}">
+          ${s.status === 'OK' ? '✅ OK' : `❌ ${s.error_count} lỗi`}
+        </span>
+      </div>
+    `).join('');
+  } else {
+    summaryDiv.style.display = 'none';
+  }
+
+  // Actions
+  document.getElementById('resultActions').style.display = 'flex';
+  document.getElementById('btnDownload').disabled = false;
+  document.getElementById('btnDownloadPro').disabled = false;
+
+  // Error table (collapsed by default)
+  const errorsDiv = document.getElementById('errorsTable');
+  const errorsCol = document.getElementById('errorsCollapse');
+  const toggleBtn = document.getElementById('toggleErrs');
+  if (data.errors.length === 0) {
+    errorsDiv.innerHTML = '<div style="padding:30px;text-align:center;color:#16a34a;">✅ Không có lỗi nào.</div>';
+    errorsCol.style.display = 'block';
+    toggleBtn.style.display = 'none';
+  } else {
+    const rows = data.errors.map((e, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${e.row}</td>
+        <td class="td-wbs">${e.wbs || '-'}</td>
+        <td>${e.col || '-'}</td>
+        <td>${e.field}</td>
+        <td style="color:#e53935;max-width:160px;word-break:break-all;">${e.received || '-'}</td>
+        <td>${e.reason}</td>
+        <td class="sev-${e.severity}">${e.severity}</td>
+        <td style="color:#16a34a;max-width:180px;">${e.fix || '-'}</td>
+      </tr>
+    `).join('');
+    errorsDiv.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>#</th><th>Dòng</th><th>WBS</th><th>Cột</th><th>Trường</th><th>Giá trị</th><th>Lỗi</th><th>Mức</th><th>Cách sửa</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    errorsCol.style.display = 'none';
+    toggleBtn.style.display = 'block';
+    toggleBtn.textContent = `▼ Xem chi tiết ${data.errors.length} lỗi`;
+  }
+
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+
+function toggleErrors() {
+  const col = document.getElementById('errorsCollapse');
+  const btn = document.getElementById('toggleErrs');
+  const total = (lastResult && lastResult.errors) ? lastResult.errors.length : 0;
+  if (col.style.display === 'none') {
+    col.style.display = 'block';
+    btn.textContent = `▲ Ẩn chi tiết ${total} lỗi`;
+  } else {
+    col.style.display = 'none';
+    btn.textContent = `▼ Xem chi tiết ${total} lỗi`;
+  }
+}
+
+async function downloadWord() {
+  if (!lastFile) { alert('Chưa có file.'); return; }
+  const reviewer = getReviewer();
+  if (!reviewer) return;
+
+  await doExport(API_EXPORT, lastFileName.replace(/\.xlsx$/i, '_BC_THAM_DINH.docx'), 'btnDownload');
+}
+
+async function downloadWordPro() {
+  if (!lastFile) { alert('Chưa có file.'); return; }
+  const reviewer = getReviewer();
+  if (!reviewer) return;
+
+  await doExport(API_EXPORT_PRO, lastFileName.replace(/\.xlsx$/i, '_BC_THAM_DINH_PRO.docx'), 'btnDownloadPro');
+}
+
+function getReviewer() {
+  const reviewer = document.getElementById('reviewerName').value.trim();
+  if (!reviewer) {
+    document.getElementById('reviewerName').focus();
+    document.getElementById('reviewerName').style.borderColor = '#e53935';
+    setTimeout(() => { document.getElementById('reviewerName').style.borderColor = ''; }, 2000);
+    return null;
+  }
+  return reviewer;
+}
+
+async function doExport(url, filename, btnId) {
+  document.getElementById(btnId).disabled = true;
+  document.getElementById('loadingWord').style.display = 'block';
+  document.getElementById('loadingWordText').textContent = 'Đang tạo file Word...';
+  document.getElementById('resultBox').scrollIntoView({ behavior: 'smooth' });
+
+  const form = new FormData();
+  form.append('file', lastFile);
+  form.append('reviewer_name', document.getElementById('reviewerName').value.trim());
+
+  try {
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Lỗi server');
+    }
+    const blob = await res.blob();
+    const url2 = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url2;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url2);
+  } catch (err) {
+    alert('Lỗi tạo file Word: ' + err.message);
+  } finally {
+    document.getElementById('loadingWord').style.display = 'none';
+    document.getElementById(btnId).disabled = false;
+  }
+}
+</script>
+</body>
+</html>

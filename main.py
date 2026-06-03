@@ -100,6 +100,14 @@ if os.path.exists(GMS_TOOLS_PATH):
         return FileResponse(GMS_TOOLS_PATH, media_type="text/html")
 
 
+# ── Serve GMS Tools PRO (full WBS section view + export) ──
+GMS_TOOLS_PRO_PATH = os.path.join(BASE_DIR, "gms-tools-pro.html")
+if os.path.exists(GMS_TOOLS_PRO_PATH):
+    @app.get("/gms-tools-pro", include_in_schema=False)
+    async def gms_tools_pro():
+        return FileResponse(GMS_TOOLS_PRO_PATH, media_type="text/html")
+
+
 # ── Serve static UI if exists ──
 ui_path = os.path.join(BASE_DIR, "test-ui.html")
 if os.path.exists(ui_path):

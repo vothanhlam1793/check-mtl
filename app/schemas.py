@@ -32,12 +32,21 @@ class Messages(BaseModel):
     error_groups: List[ErrorGroup] = []
 
 
+class WbsSection(BaseModel):
+    wbs: str
+    task_name: str = ""
+    total_items: int = 0
+    error_count: int = 0
+    status: str = "OK"
+
+
 class MetaInfo(BaseModel):
     data_sheet: str
     detected_scope_wbs: List[str] = []
     detected_scope_label: str = ""
     rows_scanned: int = 0
     rows_skipped: int = 0
+    wbs_sections: List[WbsSection] = []
 
 
 class CoverInfo(BaseModel):
