@@ -17,6 +17,11 @@
   .header h1 { font-size: 20px; }
   .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
   .status-dot.on { background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+  .nav-btn {
+    padding: 5px 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+    color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none;
+  }
+  .nav-btn:hover { background: #ff6f00; border-color: #ff6f00; }
   .status-dot.off { background: #e53935; }
 
   .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
@@ -111,9 +116,14 @@
   <div>
     <h1>MTL Validator - Test Upload</h1>
   </div>
-  <div style="font-size:13px;">
+  <div style="display:flex;align-items:center;gap:12px;">
+    <a href="/" class="nav-btn">Upload</a>
+    <a href="/gms-tools" class="nav-btn">GMS Tools</a>
+    <a href="/gms-tools-pro" class="nav-btn">GMS PRO</a>
+    <a href="/report" class="nav-btn">Báo cáo</a>
+    <a href="/api-docs" class="nav-btn">API Docs</a>
     <span class="status-dot on" id="apiDot"></span>
-    <span id="apiStatus">API: http://localhost:8000</span>
+    <span id="apiStatus" style="font-size:13px;">API: localhost:8000</span>
   </div>
 </div>
 

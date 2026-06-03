@@ -109,7 +109,7 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
                     header_task = task
                     break
 
-        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
+        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_task}"[:80], bold=True))
 
         section_errors = []
         detail_rows = []

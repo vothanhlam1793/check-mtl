@@ -264,20 +264,50 @@ async function handleFile(file) {
   lastFileName = file.name;
   document.getElementById('fileName').textContent = '📄 ' + file.name;
   dropZone.classList.add('done');
+  document.getElementById('resultBox').classList.remove('show');
   document.getElementById('resultBox').style.display = 'none';
   document.getElementById('loading').style.display = 'block';
+  document.getElementById('sectionSummary').style.display = 'none';
+  document.getElementById('errorsCollapse').style.display = 'none';
+  document.getElementById('toggleErrs').style.display = 'none';
+  document.getElementById('resultActions').style.display = 'none';
 
   const form = new FormData();
   form.append('file', file);
 
   try {
     const res = await fetch(API_VALIDATE, { method: 'POST', body: form });
+    if (!res.ok) {
+      let msg = 'Lỗi server: ' + res.status;
+      try { const err = await res.json(); msg = err.detail || err.message || msg; } catch {}
+      throw new Error(msg);
+    }
     const data = await res.json();
     lastResult = data;
-    renderResult(data);
+    try {
+      renderResult(data);
+    } catch (re) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('resultBox').classList.add('show');
+      document.getElementById('resultBox').style.display = 'block';
+      document.getElementById('resultTitle').textContent = '❌ Lỗi hiển thị kết quả';
+      document.getElementById('resultHeader').className = 'result-header fail';
+      document.getElementById('errorsTable').innerHTML = '<pre style="padding:20px;color:#dc2626;">' + re.stack + '</pre>';
+      document.getElementById('errorsCollapse').style.display = 'block';
+      document.getElementById('toggleErrs').style.display = 'none';
+    }
   } catch (err) {
     document.getElementById('loading').style.display = 'none';
-    alert('Lỗi kết nối API: ' + err.message);
+    document.getElementById('resultBox').classList.add('show');
+    document.getElementById('resultBox').style.display = 'block';
+    document.getElementById('resultTitle').textContent = '❌ Lỗi kết nối';
+    document.getElementById('resultHeader').className = 'result-header fail';
+    document.getElementById('resultBadge').textContent = 'ERROR';
+    document.getElementById('resultBadge').className = 'badge badge-fail';
+    document.getElementById('resultMeta').innerHTML = '<div class="meta-item"><div class="meta-value" style="color:#dc2626;">' + err.message + '</div></div>';
+    document.getElementById('errorsTable').innerHTML = '';
+    document.getElementById('sectionSummary').style.display = 'none';
+    document.getElementById('resultActions').style.display = 'none';
   }
 }
 
@@ -285,19 +315,21 @@ function renderResult(data) {
   document.getElementById('loading').style.display = 'none';
   const box = document.getElementById('resultBox');
   box.classList.add('show');
+  box.style.display = 'block';
 
   const isPass = data.status === 'pass';
   const header = document.getElementById('resultHeader');
   header.className = 'result-header ' + (isPass ? 'pass' : 'fail');
+  const summary = data.summary || {};
   document.getElementById('resultTitle').textContent = isPass
     ? '✅ File đạt chuẩn!'
-    : `❌ File có ${data.summary.total_errors} lỗi`;
+    : `❌ File có ${summary.total_errors || '?'} lỗi`;
 
   document.getElementById('resultBadge').className = 'badge ' + (isPass ? 'badge-pass' : 'badge-fail');
   document.getElementById('resultBadge').textContent = isPass ? 'PASS' : 'FAIL';
 
-  const m = data.meta;
-  const sc = data.summary;
+  const m = data.meta || {};
+  const sc = data.summary || {};
   const wss = m.wbs_sections || [];
   const okCount = wss.filter(s => s.status === 'OK').length;
   const errCount = wss.filter(s => s.status === 'HAS_ERRORS').length;

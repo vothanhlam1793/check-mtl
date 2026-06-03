@@ -16,6 +16,11 @@
   .cover h1 { font-size: 28px; margin-bottom: 8px; }
   .cover h2 { font-size: 18px; font-weight: 400; opacity: .9; }
   .cover .meta { margin-top: 20px; font-size: 13px; opacity: .7; }
+  .nav-btn {
+    padding: 5px 14px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08);
+    color: #fff; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: none;
+  }
+  .nav-btn:hover, .nav-btn.active { background: #ff6f00; border-color: #ff6f00; }
 
   .page { max-width: 900px; margin: 0 auto; padding: 24px; }
 
@@ -113,6 +118,13 @@
 
 <!-- ═══════ COVER ═══════ -->
 <div class="cover">
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+    <a href="/" class="nav-btn">Upload</a>
+    <a href="/gms-tools" class="nav-btn">GMS Tools</a>
+    <a href="/gms-tools-pro" class="nav-btn">GMS PRO</a>
+    <a href="/report" class="nav-btn active">Báo cáo</a>
+    <a href="/api-docs" class="nav-btn">API Docs</a>
+  </div>
   <h1>AI Agent kiểm tra file Excel MTL<br/>tự động phát hiện lỗi & báo cáo</h1>
   <h2>Báo cáo Giai đoạn 1 — Tháng 6/2026</h2>
   <div class="meta">Phòng Điều hành Dự án &bull; Server: mtl.besen.vn &bull; 03/06/2026</div>
