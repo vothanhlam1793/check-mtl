@@ -1,0 +1,325 @@
+app:
+  description: "Kiểm tra file Excel MTL — gọi API validator, trả lời nhân viên"
+  icon: "\U0001F4CB"
+  icon_background: "#1565c0"
+  mode: chat
+  name: MTL Validator Chatflow
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.3.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+    - id: api_url
+      name: API_URL
+      value_type: string
+      value: "http://your-vps-ip:8000/api/v1/validate"
+      description: "URL của MTL Validator API (thay bằng URL VPS thật)"
+  features:
+    file_upload:
+      allowed_file_extensions:
+        - .xlsx
+        - .xlsm
+      allowed_file_types: []
+      allowed_file_upload_methods:
+        - local_file
+        - remote_url
+      enabled: true
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 1
+      image:
+        enabled: false
+      number_limits: 1
+    opening_statement: "Chào bạn! Gửi file Excel MTL (.xlsx) để mình kiểm tra giúp nhé."
+    suggested_questions:
+      - "Gửi file kiểm tra"
+      - "Cần sửa những lỗi gì?"
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions_after_answer:
+      enabled: true
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+      # Start -> validateFile tool
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: start
+          targetType: tool
+        id: edge_start_to_tool
+        source: "start"
+        sourceHandle: source
+        target: "validate-file"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      # validateFile -> code parse
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: tool
+          targetType: code
+        id: edge_tool_to_code
+        source: "validate-file"
+        sourceHandle: source
+        target: "parse-result"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      # code -> LLM format
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: code
+          targetType: llm
+        id: edge_code_to_llm
+        source: "parse-result"
+        sourceHandle: source
+        target: "format-reply"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+      # LLM -> answer
+      - data:
+          isInIteration: false
+          isInLoop: false
+          sourceType: llm
+          targetType: answer
+        id: edge_llm_to_answer
+        source: "format-reply"
+        sourceHandle: source
+        target: "answer"
+        targetHandle: target
+        type: custom
+        zIndex: 0
+
+    nodes:
+      # ===== START =====
+      - data:
+          desc: ""
+          selected: false
+          title: Start
+          type: start
+          variables:
+            - allowed_file_extensions:
+                - .xlsx
+                - .xlsm
+              allowed_file_types: []
+              allowed_file_upload_methods:
+                - local_file
+              label: "File Excel MTL"
+              max_length: 48
+              options: []
+              required: true
+              type: file
+              variable: file
+        height: 90
+        id: start
+        position:
+          x: 80
+          y: 200
+        positionAbsolute:
+          x: 80
+          y: 200
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      # ===== TOOL: validateFile =====
+      - data:
+          desc: "Gọi API kiểm tra file MTL"
+          is_team_authorization: false
+          provider_id: mtl-validator
+          provider_name: mtl-validator
+          provider_type: api
+          selected: false
+          title: "validateFile"
+          tool_configurations:
+            file:
+              name: file
+              type: file
+              value: "{{#start.file#}}"
+          tool_name: validateFile
+          tool_parameters:
+            file:
+              name: file
+              type: file
+              value: "{{#start.file#}}"
+          type: tool
+        height: 98
+        id: validate-file
+        position:
+          x: 400
+          y: 200
+        positionAbsolute:
+          x: 400
+          y: 200
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      # ===== CODE: parse JSON response =====
+      - data:
+          code: |
+            def main(result: dict) -> dict:
+                """Parse API response, extract fields for LLM."""
+                if not result:
+                    return {"user_message": "Không nhận được phản hồi từ API.", "status_hint": "ERROR", "file_name": "?"}
+                
+                msgs = result.get("messages", {})
+                return {
+                    "status": result.get("status", "?"),
+                    "file_name": result.get("file_name", "?"),
+                    "total_errors": result.get("summary", {}).get("total_errors", 0),
+                    "cover_errors": result.get("summary", {}).get("cover_errors", 0),
+                    "data_errors": result.get("summary", {}).get("data_errors", 0),
+                    "status_hint": msgs.get("status_hint", "?"),
+                    "user_message": msgs.get("user_message", "Không có thông báo lỗi."),
+                    "next_actions": msgs.get("next_actions", [])
+                }
+          code_language: python3
+          desc: "Parse JSON từ API, trích user_message"
+          outputs:
+            - name: status
+              type: string
+              children: null
+            - name: file_name
+              type: string
+              children: null
+            - name: total_errors
+              type: number
+              children: null
+            - name: cover_errors
+              type: number
+              children: null
+            - name: data_errors
+              type: number
+              children: null
+            - name: status_hint
+              type: string
+              children: null
+            - name: user_message
+              type: string
+              children: null
+            - name: next_actions
+              type: array[string]
+              children: null
+          selected: false
+          title: "Parse API Result"
+          type: code
+          variables:
+            - value_selector:
+                - "validate-file"
+                - result
+              variable: result
+        height: 54
+        id: parse-result
+        position:
+          x: 720
+          y: 200
+        positionAbsolute:
+          x: 720
+          y: 200
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      # ===== LLM: format reply =====
+      - data:
+          context:
+            enabled: false
+            variable_selector: []
+          desc: "Format kết quả validation gửi cho nhân viên"
+          memory:
+            role_prefix:
+              assistant: ""
+              user: ""
+            window:
+              enabled: false
+              size: 10
+            query_prompt_template: ""
+            conversation_tags: false
+            auto_suggest: false
+          model:
+            completion_params:
+              temperature: 0.1
+              max_tokens: 1000
+            mode: chat
+            name: gpt-4o-mini
+            provider: openai
+          prompt_template:
+            - id: system-prompt
+              role: system
+              text: |
+                Bạn là trợ lý kiểm tra file Excel MTL cho phòng điều hành dự án.
+
+                QUY TẮC:
+                1. Copy NGUYÊN VĂN {{#parse-result.user_message#}} để gửi cho nhân viên.
+                2. KHÔNG thêm bớt, KHÔNG tự ý diễn giải lại lỗi.
+                3. Dựa vào status_hint, thêm 1 dòng phù hợp CUỐI cùng:
+                   - BLOCKED: "⚠️ Có lỗi NGHIÊM TRỌNG — vui lòng sửa GẤP và gửi lại!"
+                   - FAIL_NEED_FIX: "⚠️ Vui lòng sửa các lỗi trên và gửi lại file."
+                   - PASS_WITH_NOTES: "✅ File đạt chuẩn. Có vài lưu ý nhỏ, xem xét nếu cần."
+                   - PASS_CLEAN: "✅ File hoàn hảo, không có lỗi gì!"
+            - id: user-prompt
+              role: user
+              text: |
+                Kết quả kiểm tra file {{#parse-result.file_name#}}:
+
+                Status: {{#parse-result.status_hint#}}
+                Lỗi: {{#parse-result.total_errors#}} (Cover: {{#parse-result.cover_errors#}}, Data: {{#parse-result.data_errors#}})
+
+                Nội dung gửi nhân viên:
+                {{#parse-result.user_message#}}
+          selected: false
+          title: "Format Reply"
+          type: llm
+          vision:
+            enabled: false
+        height: 98
+        id: format-reply
+        position:
+          x: 1040
+          y: 200
+        positionAbsolute:
+          x: 1040
+          y: 200
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
+
+      # ===== ANSWER =====
+      - data:
+          answer: "{{#format-reply.text#}}"
+          desc: ""
+          selected: false
+          title: "Answer"
+          type: answer
+          variables: []
+        height: 104
+        id: answer
+        position:
+          x: 1360
+          y: 200
+        positionAbsolute:
+          x: 1360
+          y: 200
+        sourcePosition: right
+        targetPosition: left
+        type: custom
+        width: 244
