@@ -1,4 +1,5 @@
 import re
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -29,3 +30,9 @@ SENTINEL_DATE_SERIAL = 11403  # 1931-03-21
 
 # ── Base columns we always expect ──
 CORE_COL_COUNT = 7  # A-G minimum
+
+# ── LLM for Word report summarization ──
+LLM_API_KEY = os.getenv("LLM_API_KEY", "sk-1aa6a2183c3f40e1-3vqcdn-4b023133")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://9router.cameramamnon.com/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "ds/deepseek-v4-pro")
+LLM_SUMMARIZE_THRESHOLD = int(os.getenv("LLM_SUMMARIZE_THRESHOLD", "10"))

@@ -10,6 +10,7 @@ from docx.shared import Pt
 
 from app.schemas import ErrorItem
 from app.validator.engine import run_validation
+from config import LLM_SUMMARIZE_THRESHOLD
 
 TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "template-bc-tham-dinh.docx")
 
@@ -91,27 +92,42 @@ def _remove_rows_from(table, start_idx: int):
 
 
 def _build_cover_rows(cover_errors: List[ErrorItem]) -> List[List[dict]]:
+    """Build table rows for Cover errors (Section A) — with LLM summary."""
     rows = []
     crits = [e for e in cover_errors if e.severity == "CRITICAL"]
     warns = [e for e in cover_errors if e.severity == "WARNING"]
 
-    if crits:
-        for e in crits:
-            rows.append([{"text": ""}, {"text": ""}, {"text": ""},
-                         {"text": f"{e.field}"},
-                         {"text": f"[NGHIÊM TRỌNG] {e.reason}"},
-                         {"text": ""}, {"text": ""}])
-    if warns:
-        for e in warns:
-            rows.append([{"text": ""}, {"text": ""}, {"text": ""},
-                         {"text": f"{e.field}"},
-                         {"text": f"[Nhắc nhở] {e.reason}"},
-                         {"text": ""}, {"text": ""}])
     if not crits and not warns:
-        rows.append([{"text": ""}, {"text": ""}, {"text": ""},
-                     {"text": "Thông tin dự án trên Cover"},
-                     {"text": "Đầy đủ, không có lỗi."},
-                     {"text": ""}, {"text": ""}])
+        rows.append(_make_row(content="Thông tin dự án trên Cover", opinion="Đầy đủ, không có lỗi."))
+        return rows
+
+    # Build structured error list for LLM
+    error_list = []
+    for e in crits:
+        error_list.append({"field": e.field, "reason": e.reason, "severity": "CRITICAL"})
+    for e in warns:
+        error_list.append({"field": e.field, "reason": e.reason, "severity": "WARNING"})
+
+    # Try LLM summary
+    llm_opinion = ""
+    try:
+        from app.renderer import summarize_cover_errors
+        llm_opinion = summarize_cover_errors(error_list)
+    except Exception:
+        pass
+
+    if llm_opinion:
+        rows.append(_make_row(
+            content="Đánh giá Cover",
+            opinion=llm_opinion,
+        ))
+    else:
+        # Fallback: list individually
+        for e in crits:
+            rows.append(_make_row(content=f"{e.field}", opinion=f"[NGHIÊM TRỌNG] {e.reason}"))
+        for e in warns:
+            rows.append(_make_row(content=f"{e.field}", opinion=f"[Nhắc nhở] {e.reason}"))
+
     return rows
 
 
@@ -195,27 +211,45 @@ def _build_wbs_sections(file_path: str, errors: List[ErrorItem]) -> List[List[di
         # Section header row (BOLD)
         rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
 
-        # Items with errors in this section
-        has_errors = False
+        # Collect all errors in this section
+        section_errors = []  # List of dicts for LLM
+        detail_rows = []     # Individual rows (fallback)
         for row_num, wbs, task in items:
             handled_rows.add(row_num)
             item_errs = error_by_row.get(row_num, [])
             if item_errs:
-                has_errors = True
-                # Combine all errors for this row
-                parts = []
                 for e in item_errs:
+                    section_errors.append({
+                        "wbs": wbs, "task": task[:60] if task else "",
+                        "severity": e.severity, "reason": e.reason, "field": e.field,
+                    })
+                    ctx = f"{wbs} {task}"[:80] if task else f"Dòng {row_num} — {e.field}"
                     sl = sev_labels.get(e.severity, "")
-                    detail = f"{sl} ({e.field}) {e.reason}"
-                    parts.append(detail)
-                opinion = " | ".join(parts)
+                    detail_rows.append(_make_row(content=ctx, opinion=f"{sl} {e.reason}"))
 
-                ctx = f"{wbs} {task}"[:80] if task else f"Dòng {row_num} — {', '.join(e.field for e in item_errs)}"
-                rows.append(_make_row(content=ctx, opinion=opinion))
+        if not section_errors:
+            rows.pop()  # Remove empty section header
+            continue
 
-        # If section has no errors and no items have errors → skip section entirely
-        if not has_errors and not any(error_by_row.get(r, []) for r, _, _ in items):
-            rows.pop()  # Remove the empty section header
+        # Use LLM if many errors, else list individually
+        if len(section_errors) >= LLM_SUMMARIZE_THRESHOLD:
+            try:
+                from app.renderer import summarize_section
+                llm_text = summarize_section(f"{header_wbs} {header_task}"[:60], section_errors)
+                if llm_text:
+                    rows.append(_make_row(content="Nhận xét thẩm định", opinion=llm_text))
+                    # Add a summary line with counts
+                    impact = ", ".join(f"{wbs}" for _, wbs, _ in items[:3] if wbs)
+                    rows.append(_make_row(
+                        content=f"Các mục bị ảnh hưởng ({len(section_errors)} lỗi)",
+                        opinion=f"Bao gồm: {impact}..."
+                    ))
+                    continue
+            except Exception:
+                pass
+
+        # Fallback: individual rows
+        rows.extend(detail_rows)
 
     # Orphan errors (rows not in WBS)
     orphans = [e for e in data_errors if e.row > 0 and e.row not in handled_rows]
