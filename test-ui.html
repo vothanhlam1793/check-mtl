@@ -220,20 +220,20 @@ function renderResult(data) {
     const msgs = data.messages;
     const cls = msgs.status_hint && msgs.status_hint.startsWith('PASS') ? 'pass' : 'fail';
     const ts = data.checked_at ? new Date(data.checked_at).toLocaleTimeString('vi-VN') : '-';
-    document.getElementById('errorsTable').insertAdjacentHTML('beforebegin', \`
-      <div class="messages-box">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <h3>API Response</h3>
-          <span style="font-size:11px;color:#94a3b8;">\${ts}</span>
-        </div>
-        <span class="msg-status \${cls}">\${msgs.status_hint || cls.toUpperCase()}</span>
-        <div class="msg-summary \${cls}">\${msgs.summary}</div>
-        <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Agent nên làm gì tiếp:</h4>
-        <ul class="msg-actions">\${(msgs.next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul>
-        <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Gửi cho nhân viên:</h4>
-        <div class="msg-user">\${msgs.user_message || '(không có)'}</div>
-      </div>
-    \`);
+     document.getElementById('errorsTable').insertAdjacentHTML('beforebegin', `
+       <div class="messages-box">
+         <div style="display:flex;justify-content:space-between;align-items:center;">
+           <h3>API Response</h3>
+           <span style="font-size:11px;color:#94a3b8;">${ts}</span>
+         </div>
+         <span class="msg-status ${cls}">${msgs.status_hint || cls.toUpperCase()}</span>
+         <div class="msg-summary ${cls}">${msgs.summary}</div>
+         <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Agent nên làm gì tiếp:</h4>
+         <ul class="msg-actions">${(msgs.next_actions || []).map(a => '<li>' + a + '</li>').join('')}</ul>
+         <h4 style="font-size:13px;color:#475569;margin:8px 0 4px;">Gửi cho nhân viên:</h4>
+         <div class="msg-user">${msgs.user_message || '(không có)'}</div>
+       </div>
+     `);
   }
 
   if (data.errors.length === 0) {
