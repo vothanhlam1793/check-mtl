@@ -13,8 +13,8 @@ workflow:
     - id: api_url
       name: API_URL
       value_type: string
-      value: "http://your-vps-ip:8000/api/v1/validate"
-      description: "URL của MTL Validator API (thay bằng URL VPS thật)"
+      value: "https://mtl.besen.vn/api/v1/validate"
+      description: "URL của MTL Validator API"
   features:
     file_upload:
       allowed_file_extensions:
