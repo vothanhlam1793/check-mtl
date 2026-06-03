@@ -84,6 +84,14 @@ async def custom_swagger():
     return HTMLResponse(SWAGGER_HTML)
 
 
+# ── Serve báo cáo quản lý (business report) ──
+REPORT_PATH = os.path.join(BASE_DIR, "report-management.html")
+if os.path.exists(REPORT_PATH):
+    @app.get("/report", include_in_schema=False)
+    async def management_report():
+        return FileResponse(REPORT_PATH, media_type="text/html")
+
+
 # ── Serve static UI if exists ──
 ui_path = os.path.join(BASE_DIR, "test-ui.html")
 if os.path.exists(ui_path):
