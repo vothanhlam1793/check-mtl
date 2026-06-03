@@ -2,7 +2,7 @@ import openpyxl
 from typing import List, Set, Dict
 from dataclasses import dataclass, field
 
-from config import TemplateConfig, SCOPE_DATA_COL_START, SCOPE_DATA_COL_END
+from app.validator.infer import InferredLayout
 
 
 @dataclass
@@ -17,39 +17,48 @@ class ScopeInfo:
 
 
 def detect_scope(ws: openpyxl.worksheet.worksheet.Worksheet,
-                 template: TemplateConfig,
-                 header_row: int) -> ScopeInfo:
-    """Step C: detect employee scope and bold-mandatory rows."""
+                 layout: InferredLayout) -> ScopeInfo:
+    """Detect employee scope and bold-mandatory rows using inferred column layout."""
     info = ScopeInfo()
     total_rows = 0
     seen_wbs_labels = []
 
-    wbs_col = template.col_wbs
-    task_col = template.col_task
-    start_col = template.col_start
-    finish_col = template.col_finish
-    status_col = template.col_status
-    notes_col = template.col_notes
+    # Data columns to check: start, finish, status (+ any between them)
+    data_cols = sorted(set([
+        layout.start_col, layout.finish_col,
+        layout.status_col, layout.notes_col
+    ]))
+    # Also include duration column if it has non-formula values
+    if layout.duration_col >= 0:
+        data_cols.append(layout.duration_col)
+    data_cols = sorted(set(c for c in data_cols if c >= 0))
+    max_col = max(data_cols) + 1 if data_cols else 8
 
-    data_cols = [start_col, finish_col, status_col, notes_col]
-    if template.has_predecessors:
-        data_cols.append(template.col_predecessors)
-
-    for row in ws.iter_rows(min_row=header_row + 1, max_col=max(data_cols) + 1):
+    for row in ws.iter_rows(min_row=layout.header_row + 1, max_col=max_col):
         row_num = row[0].row
-        wbs = row[wbs_col].value if wbs_col < len(row) else None
+        wbs = row[layout.wbs_col].value if layout.wbs_col < len(row) else None
         wbs_str = str(wbs).strip() if wbs else ""
 
+        # Skip completely empty rows (no data, no WBS)
         has_any = any(cell.value is not None and str(cell.value).strip() != "" for cell in row)
         if not has_any and not wbs_str:
             continue
         total_rows += 1
 
+        # Check if row has actual data in key columns (skip formula-only data)
         has_data = False
         for ci in data_cols:
             if ci < len(row) and row[ci].value is not None:
-                has_data = True
-                break
+                raw = str(row[ci].value).strip()
+                if raw and not raw.startswith("="):
+                    has_data = True
+                    break
+            # Also consider non-formula datetime/numbers as data
+            if ci < len(row) and row[ci].value is not None:
+                v = row[ci].value
+                if isinstance(v, (datetime, int, float)) and not (isinstance(v, (int, float)) and v < 2000):
+                    has_data = True
+                    break
 
         is_bold = any(cell.font and cell.font.bold for cell in row)
 
@@ -57,14 +66,14 @@ def detect_scope(ws: openpyxl.worksheet.worksheet.Worksheet,
             info.rows_to_validate.add(row_num)
             if wbs_str:
                 info.scope_wbs.add(wbs_str)
-                task = row[task_col].value if task_col < len(row) else None
+                task = row[layout.task_col].value if layout.task_col < len(row) else None
                 if task:
                     seen_wbs_labels.append(f"{wbs_str} {str(task)[:50]}")
                 else:
                     seen_wbs_labels.append(wbs_str)
 
         if is_bold and not has_data:
-            task_val = row[task_col].value if task_col < len(row) else None
+            task_val = row[layout.task_col].value if layout.task_col < len(row) else None
             label = f"{wbs_str} {str(task_val)[:40]}".strip() if task_val else wbs_str
             info.rows_mandatory_missing[row_num] = label
 
