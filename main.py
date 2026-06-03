@@ -1,6 +1,7 @@
 import os
 import yaml
-from fastapi import FastAPI
+import copy
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
@@ -26,13 +27,27 @@ app.include_router(router)
 
 BASE_DIR = os.path.dirname(__file__)
 
-# ── Serve OpenAPI spec cho Dify import ──
+
+def _resolve_base_url(request: Request) -> str:
+    env_url = os.getenv("API_BASE_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+    host = request.headers.get("host", "localhost:8000")
+    scheme = request.headers.get("x-forwarded-proto", request.url.scheme or "http")
+    return f"{scheme}://{host}"
+
+
+# ── Serve OpenAPI spec cho Dify import (auto-inject server URL) ──
 OPENAPI_PATH = os.path.join(BASE_DIR, "openapi.yaml")
 if os.path.exists(OPENAPI_PATH):
+    with open(OPENAPI_PATH, "r", encoding="utf-8") as f:
+        _OPENAPI_SPEC = yaml.safe_load(f)
+
     @app.get("/dify/openapi.json", include_in_schema=False)
-    async def dify_openapi_json():
-        with open(OPENAPI_PATH, "r", encoding="utf-8") as f:
-            spec = yaml.safe_load(f)
+    async def dify_openapi_json(request: Request):
+        spec = copy.deepcopy(_OPENAPI_SPEC)
+        base_url = _resolve_base_url(request)
+        spec["servers"] = [{"url": base_url, "description": "Auto-detected server"}]
         return spec
 
     @app.get("/dify/openapi.yaml", include_in_schema=False)

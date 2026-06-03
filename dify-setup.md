@@ -12,17 +12,20 @@ ngrok http 8000
 # → Copy URL dạng https://xxxx.ngrok-free.app
 ```
 
-### Cách B: Docker + Cloud VPS (production)
+### Cách B: VPS (production)
 
 ```bash
-# Build
-docker build -t mtl-validator .
+git clone https://github.com/vothanhlam1793/check-mtl.git
+cd check-mtl
+pip install -r requirements.txt
 
-# Run
-docker run -d -p 8000:8000 --name mtl-validator mtl-validator
-
-# Mở port 8000 trên firewall, trỏ domain nếu có
+# Mở port 8000 trên firewall, rồi chạy:
+API_BASE_URL=http://<VPS-IP>:8000 ./run.sh
+# Hoặc tự động từ Host header:
+./run.sh
 ```
+
+Dify import: `http://<VPS-IP>:8000/dify/openapi.json`
 
 ### Cách C: Railway / Render / Fly.io (free tier)
 
