@@ -209,7 +209,11 @@ def _build_wbs_sections(file_path: str, errors: List[ErrorItem]) -> List[List[di
                     break
 
         # Section header row (BOLD)
-        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
+        if header_task.startswith(header_wbs + " "):
+            header_display = header_task
+        else:
+            header_display = f"{header_wbs} {header_task}"
+        rows.append(_make_row(wbs_text=header_wbs, content=header_display[:80], bold=True))
 
         # Collect all errors in this section
         section_errors = []  # List of dicts for LLM
@@ -223,12 +227,17 @@ def _build_wbs_sections(file_path: str, errors: List[ErrorItem]) -> List[List[di
                         "wbs": wbs, "task": task[:60] if task else "",
                         "severity": e.severity, "reason": e.reason, "field": e.field,
                     })
-                    ctx = f"{wbs} {task}"[:80] if task else f"Dòng {row_num} — {e.field}"
+                    if task and task.startswith(wbs + " "):
+                        ctx = task[:80]
+                    elif task:
+                        ctx = f"{wbs} {task}"[:80]
+                    else:
+                        ctx = f"Dòng {row_num} — {e.field}"
                     sl = sev_labels.get(e.severity, "")
                     detail_rows.append(_make_row(content=ctx, opinion=f"{sl} {e.reason}"))
 
         if not section_errors:
-            rows.pop()  # Remove empty section header
+            rows.append(_make_row(content=""))
             continue
 
         # Use LLM if many errors, else list individually

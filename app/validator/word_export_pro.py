@@ -138,18 +138,21 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
         for row_num, wbs, task in items:
             handled_rows.add(row_num)
             item_errs = error_by_row.get(row_num, [])
-            ctx = f"{wbs} {task}"[:80] if task else f"{wbs}"
 
             if item_errs:
                 for e in item_errs:
+                    if task and task.startswith(wbs + " "):
+                        ctx = task[:80]
+                    elif task:
+                        ctx = f"{wbs} {task}"[:80]
+                    else:
+                        ctx = f"{wbs}"
                     section_for_llm.append({
                         "wbs": wbs, "task": task[:60] if task else "",
                         "severity": e.severity, "reason": e.reason,
                         "field": e.field, "received": e.received or "",
                     })
                     detail_rows.append(_make_row(content=ctx, opinion=_format_opinion(e)))
-            else:
-                detail_rows.append(_make_row(content=ctx, opinion="Đã kiểm tra, OK"))
 
         if len(section_for_llm) >= LLM_SUMMARIZE_THRESHOLD:
             try:
@@ -163,6 +166,8 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
                 pass
 
         rows.extend(detail_rows)
+        if not detail_rows:
+            rows.append(_make_row(content=""))
 
     orphans = [e for e in data_errors if e.row > 0 and e.row not in handled_rows]
     if orphans:
