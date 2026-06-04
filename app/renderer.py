@@ -19,18 +19,19 @@ def _get_client() -> OpenAI:
 
 
 def _build_prompt(section_label: str, error_summaries: List[str]) -> tuple:
-    """Build system + user prompts for a section."""
     system = (
         "Bạn là chuyên viên GMS thẩm định tiến độ dự án. "
-        "Viết nhận xét bằng tiếng Việt, NGẮN GỌN (1-2 câu), chuyên nghiệp. "
-        "Không dùng ký tự đặc biệt. Không thêm lời chào hay mở đầu. "
-        "Chỉ trả về nội dung nhận xét, không thêm gì khác."
+        "Viết nhận xét bằng tiếng Việt, chuyên nghiệp, NGẮN GỌN (2-3 câu). "
+        "Nội dung phải rõ ràng, có thể hành động được. "
+        "Ví dụ: 'Bổ sung tiến độ các đầu mục con tối thiểu theo email hướng dẫn của GMS ngày 16/01/2026' "
+        "hoặc 'Điều chỉnh tiến độ hoàn thành theo vòng đời dự án' "
+        "Không thêm lời chào. Không dùng ký tự đặc biệt."
     )
     items_text = "\n".join(f"  - {s}" for s in error_summaries)
     user = (
         f"Hạng mục: {section_label}\n"
-        f"Các lỗi phát hiện:\n{items_text}\n"
-        f"Viết nhận xét thẩm định cho hạng mục này."
+        f"Kết quả kiểm tra:\n{items_text}\n"
+        f"Viết nhận xét thẩm định ngắn gọn cho hạng mục này."
     )
     return system, user
 
@@ -40,29 +41,37 @@ def summarize_section(section_label: str, errors: List[dict]) -> str:
 
     Args:
         section_label: Tên section (VD: "1.1 PLP")
-        errors: List of {"wbs": str, "task": str, "severity": str, "reason": str}
+        errors: List of {"wbs": str, "task": str, "severity": str, "reason": str, "received": str}
 
     Returns:
-        Chuỗi nhận xét tiếng Việt 1-2 câu.
+        Chuỗi nhận xét tiếng Việt 2-3 câu.
     """
     # Gom nhóm để dễ đọc
-    groups = defaultdict(lambda: {"count": 0, "severity": "", "sample_wbs": []})
+    groups = defaultdict(lambda: {"count": 0, "severity": "", "sample_wbs": [], "sample_received": ""})
     for e in errors:
         key = e.get("reason", "")[:80]
         groups[key]["count"] += 1
         groups[key]["severity"] = e.get("severity", "")
         if len(groups[key]["sample_wbs"]) < 3:
             groups[key]["sample_wbs"].append(e.get("wbs", "?"))
+        if not groups[key]["sample_received"]:
+            groups[key]["sample_received"] = e.get("received", "")
 
     summaries = []
     for reason, g in sorted(groups.items()):
         sev = g["severity"]
         cnt = g["count"]
         wbs_list = ", ".join(g["sample_wbs"])
+        received = g["sample_received"]
+        line = ""
+        if received:
+            line += f"Giá trị '{received}' — "
+        line += reason
         if cnt > 1:
-            summaries.append(f"[{sev}] {reason} (ảnh hưởng {cnt} mục, VD: {wbs_list})")
+            line += f" ({cnt} mục, VD: {wbs_list})"
         else:
-            summaries.append(f"[{sev}] {reason} (mục: {wbs_list})")
+            line += f" (mục: {wbs_list})"
+        summaries.append(line)
 
     system, user = _build_prompt(section_label, summaries)
 

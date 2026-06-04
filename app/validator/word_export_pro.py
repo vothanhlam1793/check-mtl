@@ -49,18 +49,35 @@ def _build_cover_rows_pro(cover_errors: List[ErrorItem]) -> List[List[dict]]:
     return rows
 
 
+def _format_opinion(e):
+    """Chuyển error technical thành ý kiến thẩm định rõ ràng."""
+    sev = e.severity
+    reason = e.reason
+    received = e.received or ""
+    fix = e.fix or ""
+    parts = []
+    if received and received not in reason:
+        parts.append(f"Nhận: {received}")
+    parts.append(reason)
+    if fix and fix not in reason:
+        parts.append(f"Cần: {fix}")
+    opinion = " — ".join(parts)
+    if sev == "CRITICAL":
+        opinion = f"NGHIÊM TRỌNG: {opinion}"
+    return opinion
+
+
 def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[List[dict]]:
     """Build Section B with ALL WBS sections including OK sections."""
     from app.validator.file_check import check_and_open_file
 
     data_errors = [e for e in errors if e.col != "Cover" and e.severity in ("CRITICAL", "ERROR", "WARNING")]
-    sev_labels = {"CRITICAL": "[NGHIÊM TRỌNG]", "ERROR": "[Lỗi]", "WARNING": "[Nhắc nhở]"}
 
     try:
         wb, ds_name, cs_name, layout = check_and_open_file(file_path)
         ws = wb[ds_name]
     except Exception:
-        return _fallback_data_rows_pro(data_errors, sev_labels)
+        return _fallback_data_rows_pro(data_errors)
 
     entries = []
     for r in range(layout.header_row + 1, ws.max_row + 1):
@@ -109,37 +126,38 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
                     header_task = task
                     break
 
-        rows.append(_make_row(wbs_text=header_wbs, content=f"{header_wbs} {header_task}"[:80], bold=True))
+        if header_task.startswith(header_wbs + " "):
+            header_display = header_task
+        else:
+            header_display = f"{header_wbs} {header_task}"
 
-        section_errors = []
+        rows.append(_make_row(wbs_text=header_wbs, content=header_display[:80], bold=True))
+
+        section_for_llm = []
         detail_rows = []
         for row_num, wbs, task in items:
             handled_rows.add(row_num)
             item_errs = error_by_row.get(row_num, [])
+            ctx = f"{wbs} {task}"[:80] if task else f"{wbs}"
+
             if item_errs:
                 for e in item_errs:
-                    section_errors.append({
+                    section_for_llm.append({
                         "wbs": wbs, "task": task[:60] if task else "",
-                        "severity": e.severity, "reason": e.reason, "field": e.field,
+                        "severity": e.severity, "reason": e.reason,
+                        "field": e.field, "received": e.received or "",
                     })
-                    ctx = f"{wbs} {task}"[:80] if task else f"Dòng {row_num} — {e.field}"
-                    sl = sev_labels.get(e.severity, "")
-                    detail_rows.append(_make_row(content=ctx, opinion=f"{sl} {e.reason}"))
+                    detail_rows.append(_make_row(content=ctx, opinion=_format_opinion(e)))
+            else:
+                detail_rows.append(_make_row(content=ctx, opinion="Đã kiểm tra, OK"))
 
-        if not section_errors:
-            continue
-
-        if len(section_errors) >= LLM_SUMMARIZE_THRESHOLD:
+        if len(section_for_llm) >= LLM_SUMMARIZE_THRESHOLD:
             try:
                 from app.renderer import summarize_section
-                llm_text = summarize_section(f"{header_wbs} {header_task}"[:60], section_errors)
+                llm_text = summarize_section(header_display[:60], section_for_llm)
                 if llm_text:
                     rows.append(_make_row(content="Nhận xét thẩm định", opinion=llm_text))
-                    impact = ", ".join(f"{wbs}" for _, wbs, _ in items[:3] if wbs)
-                    rows.append(_make_row(
-                        content=f"Các mục bị ảnh hưởng ({len(section_errors)} lỗi)",
-                        opinion=f"Bao gồm: {impact}..."
-                    ))
+                    rows.extend(detail_rows)
                     continue
             except Exception:
                 pass
@@ -151,43 +169,46 @@ def _build_wbs_sections_pro(file_path: str, errors: List[ErrorItem]) -> List[Lis
         rows.append(_make_row(content="Các dòng không có WBS", bold=True))
         pat_groups = defaultdict(list)
         for e in orphans:
-            key = (e.severity, e.reason[:60])
-            pat_groups[key].append(e.row)
-        for (sev, reason), row_nums in pat_groups.items():
-            sl = sev_labels.get(sev, "")
-            if len(row_nums) > 5:
+            pat_groups[e.reason[:80]].append(e)
+        for reason, errs in sorted(pat_groups.items()):
+            rv = errs[0].received or ""
+            opinion = f"Nhận: {rv} — {reason}" if rv else reason
+            if len(errs) > 5:
                 rows.append(_make_row(
-                    content=f"{len(row_nums)} dòng",
-                    opinion=f"{sl} {reason}\nDòng: {row_nums[0]}-{row_nums[-1]}"
+                    content=f"{len(errs)} dòng",
+                    opinion=f"{opinion}\nDòng: {errs[0].row}-{errs[-1].row}"
                 ))
             else:
-                for rn in row_nums:
-                    rows.append(_make_row(content=f"Dòng {rn}", opinion=f"{sl} {reason}"))
+                for e in errs:
+                    rows.append(_make_row(content=f"Dòng {e.row}", opinion=opinion))
 
     return rows
 
 
-def _fallback_data_rows_pro(data_errors, sev_labels) -> List[List[dict]]:
+def _fallback_data_rows_pro(data_errors) -> List[List[dict]]:
     if not data_errors:
         return [_make_row(content="Dữ liệu tiến độ", opinion="Không có lỗi dữ liệu.")]
 
-    pat_groups = defaultdict(lambda: {"rows": [], "field": ""})
+    pat_groups = defaultdict(lambda: {"rows": [], "field": "", "sample_received": ""})
     for e in data_errors:
         key = (e.severity, e.reason[:60])
         pat_groups[key]["rows"].append(e.row)
         pat_groups[key]["field"] = e.field or ""
+        pat_groups[key]["sample_received"] = e.received or ""
 
     rows = []
     for (sev, reason), grp in sorted(pat_groups.items()):
         rl = grp["rows"]
         fd = grp["field"]
-        sl = sev_labels.get(sev, "")
+        rv = grp["sample_received"]
+        opinion = reason
+        if rv:
+            opinion = f"Nhận: {rv} — {reason}"
         if len(rl) > 5:
-            rows.append(_make_row(content=f"{fd} ({len(rl)} dòng)", opinion=f"{sl} {reason}"))
-            rows.append(_make_row(content=f"  Dòng: {rl[0]}-{rl[-1]}"))
+            rows.append(_make_row(content=f"{fd} ({len(rl)} dòng)", opinion=opinion))
         else:
             for rn in rl:
-                rows.append(_make_row(content=f"Dòng {rn} — {fd}", opinion=f"{sl} {reason}"))
+                rows.append(_make_row(content=f"Dòng {rn}", opinion=opinion))
     return rows
 
 
