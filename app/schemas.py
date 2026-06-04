@@ -80,3 +80,14 @@ class ErrorResponse(BaseModel):
     status: str = "error"
     message: str
     code: str
+
+
+class DifyExportResponse(BaseModel):
+    status: str
+    file_name: str
+    download_url: str
+    download_filename: str
+    summary: Summary
+    user_message: str = ""
+    status_hint: str = ""
+    next_actions: List[str] = []

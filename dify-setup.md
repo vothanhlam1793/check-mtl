@@ -53,40 +53,99 @@ Sau khi import, Dify sẽ hiện:
 
 ---
 
-## 3. Tạo Dify Agent Workflow
+## 3. Tạo Dify Agent Workflow (có rẽ nhánh Validate / Export Word)
 
-Vào Dify → **Studio** → **Create from blank** → chọn **Agent / Chatflow**
+Vào Dify → **Studio** → **Create from blank** → chọn **Chatflow**
 
-### Cấu hình Agent:
+### Cấu trúc workflow:
+
+```
+[Start] → [Agent: Review yêu cầu] → [Condition: intent?]
+                                           ├── "validate" → [validateFile] ──┐
+                                           └── "export"   → [exportWordDify] ─┤
+                                                                              ↓
+                                                                     [Answer: Output]
+```
+
+### Bước 1: Thêm biến Conversation Variable
+
+Vào **Variables** → thêm `intent` (kiểu text, mặc định rỗng).
+
+### Bước 2: Node Agent (Review yêu cầu)
+
+Cho phép user upload file và chat. Agent phân tích xem user muốn gì.
 
 **System Prompt:**
 ```
-Bạn là trợ lý kiểm tra file MTL (Master Timeline) cho phòng điều hành dự án.
-Nhiệm vụ của bạn:
-1. Khi nhân viên gửi file .xlsx, gọi tool `validateFile` để kiểm tra.
-2. Đọc kết quả từ `messages.user_message` và gửi lại chính xác text đó cho nhân viên.
-3. Dựa vào `messages.status_hint`:
+Bạn là trợ lý GMS. Đọc yêu cầu của người dùng và phân loại:
+
+- Nếu user chỉ muốn KIỂM TRA, VALIDATE, CHECK lỗi → set intent = "validate"
+- Nếu user muốn XUẤT BÁO CÁO, EXPORT, WORD, BÁO CÁO THẨM ĐỊNH, THẨM ĐỊNH → set intent = "export"
+
+QUAN TRỌNG: Luôn đọc kỹ tin nhắn của user để xác định đúng intent.
+Trả lời ngắn gọn: "Đã nhận yêu cầu [validate/export]. Đang xử lý..."
+
+Cách set intent: dùng output variable của Agent node → intent.
+```
+
+**User Prompt:**
+```
+{{#sys.files#}}
+---
+User yêu cầu: {{#sys.query#}}
+```
+
+**Output variable:** `intent` (text) → gán cho conversation variable `intent`.
+
+### Bước 3: Node Condition (IF/ELSE)
+
+- **IF**: `{{#conversation.intent#}}` **contains** `export` → nhánh Export Word
+- **ELSE** → nhánh Validate
+
+### Bước 4: Nhánh VALIDATE
+
+**Node: validateFile tool**
+
+Params:
+- `file`: `{{#sys.files#}}`
+- `employee_id`: `GMS`
+
+**Node Agent (phản hồi):**
+
+**System Prompt:**
+```
+Bạn là trợ lý GMS thông báo kết quả kiểm tra MTL cho nhân viên.
+
+Đọc kết quả từ tool validateFile:
+1. Đọc `messages.user_message` — copy nguyên text này gửi cho nhân viên.
+2. Dựa vào `messages.status_hint`:
    - BLOCKED → yêu cầu nhân viên sửa GẤP các lỗi CRITICAL và nộp lại ngay
    - FAIL_NEED_FIX → yêu cầu sửa lỗi ERROR trước khi nộp lại
    - PASS_WITH_NOTES → thông báo đạt, nhắc nhẹ các lưu ý nếu có
    - PASS_CLEAN → khen ngợi, file hoàn hảo!
-4. KHÔNG tự ý thay đổi nội dung user_message — đó là text đã được format sẵn cho nhân viên.
-
-File đạt chuẩn khi KHÔNG có lỗi CRITICAL hoặc ERROR.
-WARNING có thể bỏ qua nếu là ghi chú thủ công.
+3. Nếu có lỗi, kèm gợi ý là user có thể yêu cầu xuất báo cáo thẩm định Word nếu muốn.
+4. KHÔNG tự ý thay đổi nội dung user_message.
 ```
 
-### User Prompt Template:
-```
-Người dùng gửi file: {{file}}
-Nhân viên: {{employee_id}}
----
-Hãy kiểm tra file này và thông báo kết quả cho nhân viên.
-```
+### Bước 5: Nhánh EXPORT WORD
+
+**Node: exportWordDify tool**
+
+Params:
+- `file`: `{{#sys.files#}}`
+- `reviewer_name`: `GMS`
+
+**Node Agent (phản hồi):**
+
+> **Dùng prompt từ file `prompt-export.md`** — paste toàn bộ System Prompt trong file đó.
+
+### Bước 6: Node Answer (Output)
+
+Nối cả 2 nhánh Agent vào **Answer** node.
 
 ### Bắt buộc bật:
 - **File Upload** — cho phép người dùng gửi file .xlsx
-- **Tool: validateFile** — gắn vào workflow
+- **Tool: validateFile** + **Tool: exportWordDify** — gắn cả 2 tool
 
 ---
 
@@ -138,12 +197,19 @@ Vui lòng sửa và gửi lại ạ."
 | Endpoint | Method | Dùng cho |
 |---|---|---|
 | `/` | GET | Test UI (kéo thả upload) |
-| `/api/v1/validate` | POST | Dify Agent gọi |
+| `/gms-tools` | GET | GMS Tools UI |
+| `/gms-tools-pro` | GET | GMS Tools PRO UI |
+| `/api/v1/validate` | POST | Kiểm tra file (Dify Agent gọi) |
+| `/api/v1/export-word` | POST | Xuất Word (download trực tiếp) |
+| `/api/v1/export-word-pro` | POST | Xuất Word PRO (download trực tiếp) |
+| `/api/v1/export-word-dify` | POST | **[DIFY]** Xuất Word + link download |
+| `/api/v1/export-word-pro-dify` | POST | **[DIFY]** Xuất Word PRO + link download |
 | `/api/v1/health` | GET | Dify kiểm tra tool còn sống |
 | `/dify/openapi.json` | GET | Dify import tool (JSON) |
 | `/dify/openapi.yaml` | GET | Dify import tool (YAML) |
 | `/docs` | GET | FastAPI auto-docs |
-| `/api-docs` | GET | Swagger UI (spec đầy đủ, tiếng Việt) |
+| `/api-docs` | GET | Swagger UI (spec đầy đủ) |
+| `/outputs/{file}` | GET | Tải file Word đã export |
 
 ---
 

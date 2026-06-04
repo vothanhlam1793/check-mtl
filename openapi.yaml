@@ -156,6 +156,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/export-word-dify:
+    post:
+      tags: [validate]
+      summary: "[DIFY] Upload file Excel MTL → xuất BC Thẩm Định Word + trả link download"
+      description: >
+        Dify Agent dùng endpoint này để: upload file Excel → validate →
+        export BC Thẩm Định Word → trả JSON có download_url.
+        Agent gửi link download và user_message cho nhân viên.
+
+        **Cách dùng trong Dify Agent:**
+        1. Gửi file Excel nhân viên upload
+        2. Nhận `download_url` (relative, ghép với server) + `user_message`
+        3. Gửi cho nhân viên: "File đã thẩm định xong. [Tải BC Thẩm Định]({{download_url}})"
+      operationId: exportWordDify
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File Excel .xlsx cần thẩm định
+                reviewer_name:
+                  type: string
+                  description: Tên người lập báo cáo (tùy chọn)
+                  example: "Nguyễn Văn A"
+      responses:
+        "200":
+          description: Kết quả export + link download
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DifyExportResponse"
+              example:
+                status: "fail"
+                file_name: "MTL_PhuocThien_20260528.xlsx"
+                download_url: "/outputs/MTL_PhuocThien_20260528_BC_THAM_DINH_abc123.docx"
+                download_filename: "MTL_PhuocThien_20260528_BC_THAM_DINH_abc123.docx"
+                summary:
+                  total_errors: 30
+                  total_warnings: 29
+                  cover_errors: 1
+                  cover_warnings: 1
+                  data_errors: 0
+                user_message: "LOI COVER:\n  [CRITICAL] Cover thiếu tên công ty\nVui long sua cac loi tren va gui lai file."
+                status_hint: "BLOCKED"
+                next_actions:
+                  - "YEU CAU GAP: sửa 1 lỗi CRITICAL ở: Tên công ty"
+                  - "Tải BC Thẩm Định để xem chi tiết"
+        "400":
+          description: File không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Lỗi xử lý
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/export-word-pro-dify:
+    post:
+      tags: [validate]
+      summary: "[DIFY PRO] Upload file Excel MTL → xuất BC Thẩm Định PRO (đầy đủ tất cả section) + link download"
+      description: >
+        Giống export-word-dify nhưng xuất báo cáo PRO — đầy đủ tất cả
+        WBS section kể cả section không có lỗi, dùng LLM viết nhận xét
+        thẩm định cho từng hạng mục.
+
+        **Cách dùng trong Dify Agent:**
+        1. Gửi file Excel nhân viên upload
+        2. Nhận `download_url` + `user_message`
+        3. Gửi link download và thông báo kết quả cho nhân viên
+      operationId: exportWordProDify
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File Excel .xlsx cần thẩm định
+                reviewer_name:
+                  type: string
+                  description: Tên người lập báo cáo (tùy chọn)
+                  example: "Nguyễn Văn A"
+      responses:
+        "200":
+          description: Kết quả export PRO + link download
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DifyExportResponse"
+              example:
+                status: "fail"
+                file_name: "MTL_PhuocThien_20260528.xlsx"
+                download_url: "/outputs/MTL_PhuocThien_20260528_BC_THAM_DINH_PRO_def456.docx"
+                download_filename: "MTL_PhuocThien_20260528_BC_THAM_DINH_PRO_def456.docx"
+                user_message: "LOI COVER:\n  [CRITICAL] Cover thiếu tên công ty\nVui long sua cac loi tren va gui lai file."
+                status_hint: "BLOCKED"
+                next_actions:
+                  - "Tải BC Thẩm Định PRO để xem báo cáo đầy đủ"
+        "400":
+          description: File không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Lỗi xử lý
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ErrorItem:
@@ -327,3 +454,36 @@ components:
           type: string
         code:
           type: string
+
+    DifyExportResponse:
+      type: object
+      description: Response cho Dify Agent — có link download Word + messages
+      properties:
+        status:
+          type: string
+          enum: [pass, fail, error]
+          description: pass = đạt, fail = có lỗi, error = lỗi hệ thống
+        file_name:
+          type: string
+          description: Tên file gốc
+        download_url:
+          type: string
+          description: |
+            **QUAN TRỌNG**: Đường dẫn tải file Word BC Thẩm Định.
+            Là relative path (VD: /outputs/xxx.docx). Agent ghép với
+            base URL của server để tạo link đầy đủ.
+        download_filename:
+          type: string
+          description: Tên file Word để hiển thị cho user
+        summary:
+          $ref: "#/components/schemas/Summary"
+        user_message:
+          type: string
+          description: Text đã format sẵn để gửi cho nhân viên
+        status_hint:
+          type: string
+          enum: [PASS_CLEAN, PASS_WITH_NOTES, FAIL_NEED_FIX, BLOCKED]
+        next_actions:
+          type: array
+          items:
+            type: string

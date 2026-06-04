@@ -3,6 +3,7 @@ import yaml
 import copy
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 
 from app.api import router
@@ -26,6 +27,10 @@ app.add_middleware(
 app.include_router(router)
 
 BASE_DIR = os.path.dirname(__file__)
+
+OUTPUTS_DIR = os.path.join(BASE_DIR, "outputs")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+app.mount("/outputs", StaticFiles(directory=OUTPUTS_DIR), name="outputs")
 
 
 def _resolve_base_url(request: Request) -> str:
